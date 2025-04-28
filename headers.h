@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include "PGS_MsgQ_Utilities.h"
 
 typedef short bool;
 #define true 1
@@ -22,8 +23,21 @@ typedef short bool;
 //don't mess with this variable//
 int * shmaddr;                 //
 //===============================
+// Added by us
+// The struct of processes
+struct ProcessInfo {
+    int pid; // useful for scheduler to control process.
+    int arrivalTime; // useful for process_generator, scheduler, stats.
+    int startTime; // useful for stats
+    int runTime; // useful for scheduler, process itself, stats
+    int endTime; // useful for stats
+    int waitingTime; // useful for stats
+    int priority; // useful for scheduling algorithms
 
-
+    int remainingTime; // useful for process itself, scheduler
+    int turnaroundTime; // useful for stats
+    int weightedTurnaroundTime; // useful for stats
+};
 
 int getClk()
 {
