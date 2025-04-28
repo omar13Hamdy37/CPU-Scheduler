@@ -1,33 +1,90 @@
 #include "headers.h"
+#include "queue.h"
+#include "PGS_MsgQ_Utilities.h"
+
+Queue* processQueue; // Queue of All Processes loaded from inputFile
 
 void clearResources(int);
+void loadInputFile(char* fileName);
 
 
 
+int AllocateProcess(int time, ProcessInfo** process);
 
 int main(int argc, char * argv[])
 {
     signal(SIGINT, clearResources);
     // TODO Initialization
     // 1. Read the input files.
+    processQueue = createQueue(); // Queue Creation
+    loadInputFile("processes.txt");
+    
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
     // 3. Initiate and create the scheduler and clock processes.
     // 4. Use this function after creating the clock process to initialize clock
     initClk();
-    // To get time use this
-    int x = getClk();
-    printf("current time is %d\n", x);
+    int timestep;
     // TODO Generation Main Loop
+    while (!isEmpty(processQueue)) {   // To Be revised later (While or do while) loop
+        timestep = getClk();
+        ProcessInfo* process = NULL;
 
+        while (AllocateProcess(timestep, &process)) {
+            /*
+            ...
+            */
+        }
+    }
     // 5. Create a data structure for processes and provide it with its parameters.
     // 6. Send the information to the scheduler at the appropriate time.
     // 7. Clear clock resources
     destroyClk(true);
 }
 
+void loadInputFile(char* fileName) {
+    FILE* file = fopen(fileName, "r");
+    if (file == NULL) {
+        perror("Failed to open file");
+        exit(1);
+    }
+
+    char line[256];
+    fgets(line, sizeof(line), file); // skipping the comment line
+
+    int id, arrivalTime, runTime, priority;
+    while (fscanf(file, "%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority) != EOF) {
+        ProcessInfo* process = (ProcessInfo*)malloc(sizeof(ProcessInfo));
+        process->pid = id;
+        process->arrivalTime = arrivalTime;
+        process->runTime = runTime;
+        process->priority = priority;
+        process->remainingTime = runTime; 
+        process->startTime = -1;  
+        process->endTime = -1;   
+        process->waitingTime = 0; 
+        process->turnaroundTime = 0; 
+        process->weightedTurnaroundTime = 0; 
+
+        enqueue(processQueue, process);
+    }
+    fclose(file);
+}
+
+int AllocateProcess(int time, ProcessInfo** process) {
+    ProcessInfo* nextProcess = (ProcessInfo*)peek(processQueue);
+    if (nextProcess == NULL) return 0;
+    if (nextProcess->arrivalTime == time) {
+        *process = (ProcessInfo*)dequeue(processQueue);
+        return 1; 
+    }
+
+    return 0; 
+}
+
 void clearResources(int signum)
 {
     //TODO Clears all resources in case of interruption
+    destroyQueue(processQueue);
 }
 
 
