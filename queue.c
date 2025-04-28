@@ -1,14 +1,7 @@
-#include "headers.h"
+#include "queue.h"
+#include <stdlib.h>
+#include <stdio.h>
 
-typedef struct QueueNode {
-    void* data;
-    struct QueueNode* next;
-} QueueNode;
-
-typedef struct Queue {
-    QueueNode* front;
-    QueueNode* rear;
-} Queue; // I can just Queue* q = createQueue();
 
 Queue* createQueue() {
     Queue* queue = (Queue*)malloc(sizeof(Queue));
@@ -55,9 +48,7 @@ void* dequeue(Queue* queue) {
 }
 
 void* peek(Queue* queue) {
-    if (queue->front == NULL) {
-        return NULL;
-    }
+    if (queue->front == NULL) return NULL;
     return queue->front->data;
 }
 
