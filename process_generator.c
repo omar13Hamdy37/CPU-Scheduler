@@ -6,7 +6,7 @@ Queue* processQueue; // Queue of All Processes loaded from inputFile
 void clearResources(int);
 void loadInputFile(char* fileName);
 
-struct ProcessInfo {
+typedef struct ProcessInfo { // typedef so I dont always have to type struct ProcessInfo
     int pid; // useful for scheduler to control process.
     int arrivalTime; // useful for process_generator, scheduler, stats.
     int startTime; // useful for stats
@@ -14,12 +14,22 @@ struct ProcessInfo {
     int endTime; // useful for stats
     int waitingTime; // useful for stats
     int priority; // useful for scheduling algorithms
-
+    
     int remainingTime; // useful for process itself, scheduler
     int turnaroundTime; // useful for stats
     int weightedTurnaroundTime; // useful for stats
-};
+} ProcessInfo;
 
+int AllocateProcess(int time, ProcessInfo** process) {
+    ProcessInfo* nextProcess = (ProcessInfo*)peek(processQueue);
+    if (nextProcess == NULL) return 0;
+    if (nextProcess->arrivalTime == time) {
+        *process = (ProcessInfo*)dequeue(processQueue);
+        return 1; 
+    }
+
+    return 0; 
+}
 
 int main(int argc, char * argv[])
 {
@@ -33,11 +43,18 @@ int main(int argc, char * argv[])
     // 3. Initiate and create the scheduler and clock processes.
     // 4. Use this function after creating the clock process to initialize clock
     initClk();
-    // To get time use this
-    int x = getClk();
-    printf("current time is %d\n", x);
+    int timestep;
     // TODO Generation Main Loop
+    while (!isEmpty(processQueue)) {   // To Be revised later (While or do while) loop
+        timestep = getClk();
+        ProcessInfo* process = NULL;
 
+        while (AllocateProcess(timestep, &process)) {
+            /*
+            ...
+            */
+        }
+    }
     // 5. Create a data structure for processes and provide it with its parameters.
     // 6. Send the information to the scheduler at the appropriate time.
     // 7. Clear clock resources
@@ -56,7 +73,7 @@ void loadInputFile(char* fileName) {
 
     int id, arrivalTime, runTime, priority;
     while (fscanf(file, "%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority) != EOF) {
-        struct ProcessInfo* process = (struct ProcessInfo*)malloc(sizeof(struct ProcessInfo));
+        ProcessInfo* process = (ProcessInfo*)malloc(sizeof(ProcessInfo));
         process->pid = id;
         process->arrivalTime = arrivalTime;
         process->runTime = runTime;
