@@ -20,16 +20,7 @@ typedef struct ProcessInfo { // typedef so I dont always have to type struct Pro
     int weightedTurnaroundTime; // useful for stats
 } ProcessInfo;
 
-int AllocateProcess(int time, ProcessInfo** process) {
-    ProcessInfo* nextProcess = (ProcessInfo*)peek(processQueue);
-    if (nextProcess == NULL) return 0;
-    if (nextProcess->arrivalTime == time) {
-        *process = (ProcessInfo*)dequeue(processQueue);
-        return 1; 
-    }
-
-    return 0; 
-}
+int AllocateProcess(int time, ProcessInfo** process);
 
 int main(int argc, char * argv[])
 {
@@ -88,6 +79,17 @@ void loadInputFile(char* fileName) {
         enqueue(processQueue, process);
     }
     fclose(file);
+}
+
+int AllocateProcess(int time, ProcessInfo** process) {
+    ProcessInfo* nextProcess = (ProcessInfo*)peek(processQueue);
+    if (nextProcess == NULL) return 0;
+    if (nextProcess->arrivalTime == time) {
+        *process = (ProcessInfo*)dequeue(processQueue);
+        return 1; 
+    }
+
+    return 0; 
 }
 
 void clearResources(int signum)
