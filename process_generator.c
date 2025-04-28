@@ -1,6 +1,10 @@
 #include "headers.h"
+#include "queue.h"
+
+Queue* processQueue; // Queue of All Processes loaded from inputFile
 
 void clearResources(int);
+void loadInputFile(char* fileName);
 
 struct ProcessInfo {
     int pid; // useful for scheduler to control process.
@@ -22,6 +26,9 @@ int main(int argc, char * argv[])
     signal(SIGINT, clearResources);
     // TODO Initialization
     // 1. Read the input files.
+    processQueue = createQueue(); // Queue Creation
+    loadInputFile("processes.txt");
+    
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
     // 3. Initiate and create the scheduler and clock processes.
     // 4. Use this function after creating the clock process to initialize clock
@@ -37,9 +44,39 @@ int main(int argc, char * argv[])
     destroyClk(true);
 }
 
+void loadInputFile(char* fileName) {
+    FILE* file = fopen(fileName, "r");
+    if (file == NULL) {
+        perror("Failed to open file");
+        exit(1);
+    }
+
+    char line[256];
+    fgets(line, sizeof(line), file); // skipping the comment line
+
+    int id, arrivalTime, runTime, priority;
+    while (fscanf(file, "%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority) != EOF) {
+        struct ProcessInfo* process = (struct ProcessInfo*)malloc(sizeof(struct ProcessInfo));
+        process->pid = id;
+        process->arrivalTime = arrivalTime;
+        process->runTime = runTime;
+        process->priority = priority;
+        process->remainingTime = runTime; 
+        process->startTime = -1;  
+        process->endTime = -1;   
+        process->waitingTime = 0; 
+        process->turnaroundTime = 0; 
+        process->weightedTurnaroundTime = 0; 
+
+        enqueue(processQueue, process);
+    }
+    fclose(file);
+}
+
 void clearResources(int signum)
 {
     //TODO Clears all resources in case of interruption
+    destroyQueue(processQueue);
 }
 
 
