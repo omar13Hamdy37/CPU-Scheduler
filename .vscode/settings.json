@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "*.html": "html",
+        "**/templates/**/*.html": "html",
+        "**/templates/**/*": "html",
+        "pgs_msgq_utilities.h": "c",
+        "headers.h": "c"
+    }
+}

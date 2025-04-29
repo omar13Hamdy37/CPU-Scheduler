@@ -1,14 +1,25 @@
+# Compiler and flags
+CC = gcc
+CFLAGS = -Iinclude
+
+# Folders
+SRC = src
+BIN = bin
+
 build:
-	gcc process_generator.c queue.c PGS_MsgQ_Utilities.c -o process_generator.out
-	gcc clk.c -o clk.out
-	gcc scheduler.c PGS_MsgQ_Utilities.c -o scheduler.out
-	gcc process.c -o process.out
-	gcc test_generator.c -o test_generator.out
+	$(CC) $(CFLAGS) $(SRC)/PGS_MsgQ_Utilities.c $(SRC)/queue.c $(SRC)/process_generator.c -o $(BIN)/process_generator.out
+	$(CC) $(CFLAGS) $(SRC)/clk.c -o $(BIN)/clk.out
+	$(CC) $(CFLAGS) $(SRC)/PGS_MsgQ_Utilities.c $(SRC)/queue.c $(SRC)/scheduler.c -o $(BIN)/scheduler.out
+	$(CC) $(CFLAGS) $(SRC)/process.c -o $(BIN)/process.out
+	$(CC) $(CFLAGS) $(SRC)/test_generator.c -o $(BIN)/test_generator.out
 
 clean:
-	rm -f *.out processes.txt
+	rm -f $(BIN)/*.out processes.txt
 
 all: clean build
 
 run:
-	./process_generator.out
+run:
+	$(BIN)/test_generator.out
+	$(BIN)/process_generator.out
+
