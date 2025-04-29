@@ -2,12 +2,12 @@
 #include "PGS_MsgQ_Utilities.h"
 #include "queue.h"
 #include "stdio.h"
+#include "loadFile.h"
 
 Queue *processQueue; // Queue of All Processes loaded from inputFile
 
 // Prototype of functions
 void clearResources(int);
-void loadInputFile(char *fileName);
 int AllocateProcess(int time, ProcessInfo **process);
 
 int main(int argc, char *argv[])
@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     // TODO Initialization
     // 1. Read the input files.
     processQueue = createQueue(); // Queue Creation
-    loadInputFile("processes.txt");
+    loadInputFile("processes.txt", processQueue);
     // Todo: add parameters if needed
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
 
@@ -102,38 +102,6 @@ int main(int argc, char *argv[])
     // 6. Send the information to the scheduler at the appropriate time.
     // 7. Clear clock resources
     destroyClk(true);
-}
-
-void loadInputFile(char *fileName)
-{
-    FILE *file = fopen(fileName, "r");
-    if (file == NULL)
-    {
-        perror("Failed to open file");
-        exit(1);
-    }
-
-    char line[256];
-    fgets(line, sizeof(line), file); // skipping the comment line
-
-    int id, arrivalTime, runTime, priority;
-    while (fscanf(file, "%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority) != EOF)
-    {
-        ProcessInfo *process = (ProcessInfo *)malloc(sizeof(ProcessInfo));
-        process->pid = id;
-        process->arrivalTime = arrivalTime;
-        process->runTime = runTime;
-        process->priority = priority;
-        process->remainingTime = runTime;
-        process->startTime = -1;
-        process->endTime = -1;
-        process->waitingTime = 0;
-        process->turnaroundTime = 0;
-        process->weightedTurnaroundTime = 0;
-
-        enqueue(processQueue, process);
-    }
-    fclose(file);
 }
 
 int AllocateProcess(int time, ProcessInfo **process)
