@@ -29,7 +29,7 @@ void loadInputFile(char *fileName, Queue *queue)
         process->waitingTime = 0;
         process->turnaroundTime = 0;
         process->weightedTurnaroundTime = 0;
-
+        process->state = WAITING;
         enqueue(queue, process);
     }
 

@@ -1,6 +1,7 @@
 #include "headers.h"
 #include "../models/scheduling_types.h"
 #include "PGS_MsgQ_Utilities.h"
+#include "Scheduler_log.h"
 #include <stdlib.h> // for atoi
 #include "queue.h"
 
@@ -39,6 +40,10 @@ int main(int argc, char *argv[])
 
     // Create queue of ready processes
     readyQueue = createQueue();
+
+    // Initiate the Scheduler.log file 
+    initSchedulerLog();
+
     // message buffer and send type to 1
     PGSchedulerMsgBuffer msgBuffer;
     msgBuffer.mtype = 1;
@@ -58,6 +63,11 @@ int main(int argc, char *argv[])
         // print to check ready queue is correct
         printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
                processCopy->pid, getClk(), processCopy->arrivalTime);
+        
+        // Simple example of how to use the logProcess function...
+        // make sure to call the function each time a process changes its state 
+        // parameters->[process, current time, newState of the process]
+        logProcess(processCopy, getClk(), STARTED);
     }
 
     // TODO implement the scheduler :)

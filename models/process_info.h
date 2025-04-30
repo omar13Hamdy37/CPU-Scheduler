@@ -1,5 +1,15 @@
 #ifndef PROCESS_INFO_H
 #define PROCESS_INFO_H
+
+// process states
+typedef enum {
+    WAITING,
+    STARTED,
+    STOPPED,
+    RESUMED,
+    FINISHED
+} ProcessState;
+
 // process struct
 typedef struct 
 {
@@ -14,5 +24,6 @@ typedef struct
     int remainingTime;          // useful for process itself, scheduler
     int turnaroundTime;         // useful for stats
     int weightedTurnaroundTime; // useful for stats
+    ProcessState state; // useful for tracking process state
 } ProcessInfo;
 #endif
