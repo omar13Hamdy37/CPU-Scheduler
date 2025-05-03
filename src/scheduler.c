@@ -4,6 +4,16 @@
 #include "Scheduler_log.h"
 #include <stdlib.h> // for atoi
 #include "queue.h"
+#include <limits.h> // for INT_MIN
+#include <math.h> // for pow
+
+// max of two numbers usefull for calculating stats
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWaiting, float* stddev);
+float calculateSTD(float totalWTA, int size, Queue* queue);
+void schedulerPerf(Queue* finishedQueue);
+
 
 Queue *readyQueue; // queue of ready processes info
 int msqid;         // id of message queue we use to communicate with PG
@@ -74,6 +84,11 @@ int main(int argc, char *argv[])
     // ana edetak aho the type of scheduling algo check models hatal2y enum
     // upon termination release the clock resources.
 
+    /*
+        use function like this
+        schedulerPerf(finishQueue);
+    */
+
     // LATER destroyClk(true);
 }
 /*
@@ -86,3 +101,72 @@ int main(int argc, char *argv[])
 2) So when a process is done it sends a message to the scheduler with the data it needs to calculate the above.
 3) How does the process send that data to the scheduler? Probably using a message queue or signal.
 */
+
+// Creates the scheduler.perf file  --> just pass the finishedQueue 
+void schedulerPerf(Queue* finishedQueue) {
+    int CPU;
+    float AvgWTA, AvgWaiting, stddev;
+    calcStatistics(finishedQueue, &CPU, &AvgWTA, &AvgWaiting, &stddev);
+
+    FILE *file = fopen("scheduler.perf", "w");
+    if (file == NULL) {
+        perror("Error opening file");
+        return;
+    }
+
+    fprintf(file, "CPU utilization = %d%%\n", CPU); // %% -> %
+    fprintf(file, "Avg WTA = %.2f\n", AvgWTA);
+    fprintf(file, "Avg Waiting = %.2f\n", AvgWaiting);
+    fprintf(file, "Std WTA = %.2f\n", stddev);
+
+    fclose(file);
+}
+
+// Calculates all required variables for scheduler.perf file
+void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWaiting, float* stddev) {
+    
+    // Total time will be the maximum finishTime of all processes
+    int totalTime = INT_MIN;
+    int totalRunTime = 0;
+    float totalWTA = 0;
+    int totalWait = 0;
+    int processesCount = 0;
+    
+    // For standard Deviation calculation
+    Queue *stdQueue = createQueue(); 
+    ProcessInfo* process = NULL;
+    while (!isEmpty(finishedQueue)) {
+        process = (ProcessInfo *)dequeue(finishedQueue);
+        totalTime = max(totalTime, process->endTime);
+        totalRunTime += process->runTime;
+        float WTA = (float)(process->endTime - process->arrivalTime) / process->runTime;
+        // update WTA of process if it wasn't calculated
+        process->weightedTurnaroundTime = WTA;
+        totalWTA += WTA;
+        totalWait += process->waitingTime;
+        processesCount++;
+        // to be processed again in stddev calculations
+        enqueue(stdQueue, process);
+    }
+
+    float Utilization = (float)totalRunTime / totalTime;
+
+    *CPU = (int)(100 * Utilization);
+    *AvgWTA = totalWTA / processesCount;
+    *AvgWaiting = (float)totalWait / processesCount;
+    *stddev = calculateSTD(totalWTA, processesCount, stdQueue);
+
+}
+
+float calculateSTD(float totalWTA, int size, Queue* queue) {
+    
+    float stddev = 0;
+    float mean = totalWTA / (float)size;
+    ProcessInfo* process = NULL;
+    while (!isEmpty(queue)) {
+        process = (ProcessInfo *)dequeue(queue);
+        stddev += pow(process->weightedTurnaroundTime - mean, 2);
+    }
+    stddev = sqrt(stddev / (size - 1));
+    return stddev;
+}
