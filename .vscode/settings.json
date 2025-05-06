@@ -5,6 +5,12 @@
         "**/templates/**/*": "html",
         "pgs_msgq_utilities.h": "c",
         "headers.h": "c",
-        "process_info.h": "c"
+        "process_info.h": "c",
+        "scheduler_log.h": "c",
+        "scheduler_stats.h": "c",
+        "queue.h": "c",
+        "scheduler_algo.h": "c",
+        "stdlib.h": "c",
+        "priqueue.h": "c"
     }
 }

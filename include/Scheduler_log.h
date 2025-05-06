@@ -1,3 +1,6 @@
+#ifndef SCHEDULER_LOG_H
+#define SCHEDULER_LOG_H
+
 #include "../models/process_info.h"
 #include "stdio.h"
 
@@ -5,3 +8,5 @@
 void initSchedulerLog();
 // Call this function eachtime a process changes its state (RUNNING, STOPPED, etc...) 
 void logProcess(ProcessInfo* process, int timestep, ProcessState newState);
+
+#endif

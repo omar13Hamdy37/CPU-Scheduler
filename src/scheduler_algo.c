@@ -1,12 +1,4 @@
 #include "../include/scheduler_algo.h"
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <math.h>
-#include "../include/PGS_MsgQ_Utilities.h"
-#include "queue.h"
-
-#include <signal.h>
 
 
 #define TRUE 1
@@ -158,176 +150,146 @@ ProcessInfo *dequeue_highest_priority(Queue *q)
     return selectedProcess;
 }
 
-void runProcess(ProcessInfo *process)
-{
-    int pid = fork();
-    if (pid == 0)
-    {
-        char runtimeStr[10];
-        sprintf(runtimeStr, "%d", process->runTime);
-        execl("./process.out", "./process.out", runtimeStr, NULL);
-        perror("execl failed");
-        exit(EXIT_FAILURE);
-    }
-    else
-    {
-        process->pid = pid;
-    }
-}
 
-void pauseProcess(pid_t pid)
-{
-    kill(pid, SIGSTOP);
-}
 
-void resumeProcess(pid_t pid)
-{
-    kill(pid, SIGCONT);
-}
+// ProcessInfo *dequeueShortestJob(Queue *q)
+// {
+//     if (isEmpty(q))
+//         return NULL;
 
-void stopProcess(pid_t pid)
-{
-    kill(pid, SIGKILL);
-    waitpid(pid, NULL, 0);
-}
+//     QueueNode *curr = q->front;
+//     QueueNode *minNode = curr;
+//     while (curr != NULL)
+//     {
+//         ProcessInfo *pCurr = (ProcessInfo *)curr->data;
+//         ProcessInfo *pMin = (ProcessInfo *)minNode->data;
+//         if (pCurr->remainingTime < pMin->remainingTime)
+//         {
+//             minNode = curr;
+//         }
+//         curr = curr->next;
+//     }
 
-ProcessInfo *dequeueShortestJob(Queue *q)
-{
-    if (isEmpty(q))
-        return NULL;
+//     // Remove minNode from queue and return it
+//     ProcessInfo *selected = (ProcessInfo *)minNode->data;
+//     removeNode(q, minNode);
+//     return selected;
+// }
 
-    QueueNode *curr = q->front;
-    QueueNode *minNode = curr;
-    while (curr != NULL)
-    {
-        ProcessInfo *pCurr = (ProcessInfo *)curr->data;
-        ProcessInfo *pMin = (ProcessInfo *)minNode->data;
-        if (pCurr->remainingTime < pMin->remainingTime)
-        {
-            minNode = curr;
-        }
-        curr = curr->next;
-    }
+// void runSRTN(int msqid){
+//     ProcessInfo *currentRunningProcess = NULL;
+//     PGSchedulerMsgBuffer msgBuffer;
+//     Queue *readyQueue = createQueue(); // ready queue for incoming processes
+//     int timestep = 0;
 
-    // Remove minNode from queue and return it
-    ProcessInfo *selected = (ProcessInfo *)minNode->data;
-    removeNode(q, minNode);
-    return selected;
-}
+//     float totalCPUTime = 0;
+//     float totalTurnaroundTime = 0;
+//     float totalWaitingTime = 0;
+//     float totalWTA = 0;
+//     int numCompletedProcesses = 0; // Total no. of processes completed
+//     float squaredDiffWTA = 0;      // For calc standard deviation
 
-void runSRTN(int msqid)
-{
-    ProcessInfo *currentRunningProcess = NULL;
-    PGSchedulerMsgBuffer msgBuffer;
-    Queue *readyQueue = createQueue(); // ready queue for incoming processes
-    int timestep = 0;
+//     while (1)
+//     {
+//         if (ReceiveFromPG(&msgBuffer, msqid) != -1)
+//         {
+//             ProcessInfo *newProcess = malloc(sizeof(ProcessInfo));
+//             *newProcess = UnpackMsgBuffer(msgBuffer);
+//             enqueue(readyQueue, newProcess);
 
-    float totalCPUTime = 0;
-    float totalTurnaroundTime = 0;
-    float totalWaitingTime = 0;
-    float totalWTA = 0;
-    int numCompletedProcesses = 0; // Total no. of processes completed
-    float squaredDiffWTA = 0;      // For calc standard deviation
+//             // Check if preemption is needed
+//             if (currentRunningProcess == NULL)
+//             {
+//                 // No process running -> start the shortest process
+//                 currentRunningProcess = dequeueShortestJob(readyQueue);
+//                 if (currentRunningProcess != NULL)
+//                 {
+//                     printf("Logged");
+//                     runProcess(currentRunningProcess);
+//                     logProcess(currentRunningProcess, timestep, STARTED);
+//                 }
+//             }
+//             else if (newProcess->remainingTime < currentRunningProcess->remainingTime)
+//             {
+//                 // Preempt current process
+//                 pauseProcess(currentRunningProcess);
+//                 enqueue(readyQueue, currentRunningProcess);
 
-    while (1)
-    {
-        if (ReceiveFromPG(&msgBuffer, msqid) != -1)
-        {
-            ProcessInfo *newProcess = malloc(sizeof(ProcessInfo));
-            *newProcess = UnpackMsgBuffer(msgBuffer);
-            enqueue(readyQueue, newProcess);
+//                 // Select new shortest
+//                 currentRunningProcess = dequeueShortestJob(readyQueue);
+//                 if (currentRunningProcess->pid > 0)
+//                 {
+//                     resumeProcess(currentRunningProcess);
+//                     logProcess(currentRunningProcess, timestep, RESUMED);
+//                 }
+//                 else
+//                 {
+//                     runProcess(currentRunningProcess);
+//                     logProcess(currentRunningProcess, timestep, STARTED);
+//                 }
+//             }
+//         }
 
-            // Check if preemption is needed
-            if (currentRunningProcess == NULL)
-            {
-                // No process running -> start the shortest process
-                currentRunningProcess = dequeueShortestJob(readyQueue);
-                if (currentRunningProcess != NULL)
-                {
-                    runProcess(currentRunningProcess);
-                    logProcess(currentRunningProcess, timestep, STARTED);
-                }
-            }
-            else if (newProcess->remainingTime < currentRunningProcess->remainingTime)
-            {
-                // Preempt current process
-                pauseProcess(currentRunningProcess->pid);
-                enqueue(readyQueue, currentRunningProcess);
+//         // Check if current process finished
+//         if (currentRunningProcess != NULL)
+//         {
+//             int status;
+//             pid_t finishedPID = waitpid(currentRunningProcess->pid, &status, WNOHANG);
+//             if (finishedPID == currentRunningProcess->pid)
+//             {
+//                 logProcess(currentRunningProcess, timestep, FINISHED);
 
-                // Select new shortest
-                currentRunningProcess = dequeueShortestJob(readyQueue);
-                if (currentRunningProcess->pid > 0)
-                {
-                    resumeProcess(currentRunningProcess->pid);
-                    logProcess(currentRunningProcess, timestep, RESUMED);
-                }
-                else
-                {
-                    runProcess(currentRunningProcess);
-                    logProcess(currentRunningProcess, timestep, STARTED);
-                }
-            }
-        }
+//                 currentRunningProcess->endTime = timestep;
+//                 currentRunningProcess->turnaroundTime = currentRunningProcess->endTime - currentRunningProcess->arrivalTime;
+//                 currentRunningProcess->waitingTime = currentRunningProcess->turnaroundTime - currentRunningProcess->runTime;
+//                 currentRunningProcess->weightedTurnaroundTime = (float)currentRunningProcess->turnaroundTime / currentRunningProcess->runTime;
 
-        // Check if current process finished
-        if (currentRunningProcess != NULL)
-        {
-            int status;
-            pid_t finishedPID = waitpid(currentRunningProcess->pid, &status, WNOHANG);
-            if (finishedPID == currentRunningProcess->pid)
-            {
-                logProcess(currentRunningProcess, timestep, FINISHED);
+//                 totalTurnaroundTime += currentRunningProcess->turnaroundTime;
+//                 totalWaitingTime += currentRunningProcess->waitingTime;
+//                 totalWTA += currentRunningProcess->weightedTurnaroundTime;
+//                 squaredDiffWTA += currentRunningProcess->weightedTurnaroundTime * currentRunningProcess->weightedTurnaroundTime;
+//                 numCompletedProcesses++;
 
-                currentRunningProcess->endTime = timestep;
-                currentRunningProcess->turnaroundTime = currentRunningProcess->endTime - currentRunningProcess->arrivalTime;
-                currentRunningProcess->waitingTime = currentRunningProcess->turnaroundTime - currentRunningProcess->runTime;
-                currentRunningProcess->weightedTurnaroundTime = (float)currentRunningProcess->turnaroundTime / currentRunningProcess->runTime;
+//                 free(currentRunningProcess);
+//                 currentRunningProcess = NULL;
 
-                totalTurnaroundTime += currentRunningProcess->turnaroundTime;
-                totalWaitingTime += currentRunningProcess->waitingTime;
-                totalWTA += currentRunningProcess->weightedTurnaroundTime;
-                squaredDiffWTA += currentRunningProcess->weightedTurnaroundTime * currentRunningProcess->weightedTurnaroundTime;
-                numCompletedProcesses++;
+//                 // Start next process if ready
+//                 currentRunningProcess = dequeueShortestJob(readyQueue);
+//                 if (currentRunningProcess != NULL)
+//                 {
+//                     if (currentRunningProcess->pid > 0)
+//                     {
+//                         resumeProcess(currentRunningProcess);
+//                         logProcess(currentRunningProcess, timestep, RESUMED);
+//                     }
+//                     else
+//                     {
+//                         runProcess(currentRunningProcess);
+//                         logProcess(currentRunningProcess, timestep, STARTED);
+//                     }
+//                 }
+//             }
+//         }
 
-                free(currentRunningProcess);
-                currentRunningProcess = NULL;
+//         if (currentRunningProcess != NULL)
+//         {
+//             currentRunningProcess->remainingTime -= 1;
+//             totalCPUTime += 1;
+//         }
 
-                // Start next process if ready
-                currentRunningProcess = dequeueShortestJob(readyQueue);
-                if (currentRunningProcess != NULL)
-                {
-                    if (currentRunningProcess->pid > 0)
-                    {
-                        resumeProcess(currentRunningProcess->pid);
-                        logProcess(currentRunningProcess, timestep, RESUMED);
-                    }
-                    else
-                    {
-                        runProcess(currentRunningProcess);
-                        logProcess(currentRunningProcess, timestep, STARTED);
-                    }
-                }
-            }
-        }
+//         if (isEmpty(readyQueue) && currentRunningProcess == NULL)
+//         {
+//             break;
+//         }
 
-        if (currentRunningProcess != NULL)
-        {
-            currentRunningProcess->remainingTime -= 1;
-            totalCPUTime += 1;
-        }
+//         usleep(1000); // simulate time step
+//         timestep++;
+//     }
+//     float avgWTA = totalWTA / numCompletedProcesses;
+//     float avgWaitingTime = totalWaitingTime / numCompletedProcesses;
+//     float stdDevWTA = sqrt(squaredDiffWTA / numCompletedProcesses - avgWTA * avgWTA);
+//     float cpuUtilization = (totalCPUTime / timestep) * 100;
 
-        if (isEmpty(readyQueue) && currentRunningProcess == NULL)
-        {
-            break;
-        }
+//     destroyQueue(readyQueue);
+// }
 
-        usleep(1000); // simulate time step
-        timestep++;
-    }
-    float avgWTA = totalWTA / numCompletedProcesses;
-    float avgWaitingTime = totalWaitingTime / numCompletedProcesses;
-    float stdDevWTA = sqrt(squaredDiffWTA / numCompletedProcesses - avgWTA * avgWTA);
-    float cpuUtilization = (totalCPUTime / timestep) * 100;
-
-    destroyQueue(readyQueue);
-}

@@ -15,7 +15,9 @@ typedef struct
 // Function prototypes
 int createPGSchedulerMsgQueue();
 int SendToScheduler(ProcessInfo processInfo, int msqid);
+int BlockingReceiveFromPG(PGSchedulerMsgBuffer *msgFromPG, int msqid);
 int ReceiveFromPG(PGSchedulerMsgBuffer *msgFromPG, int msqid);
 ProcessInfo UnpackMsgBuffer(PGSchedulerMsgBuffer msgFromPG);
+void ClearMsgQ(int msqid);
 
 #endif

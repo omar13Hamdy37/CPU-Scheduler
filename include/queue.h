@@ -1,4 +1,9 @@
+#ifndef QUEUE_H
+#define QUEUE_H
+
 #include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 typedef struct QueueNode {
     void* data;
@@ -18,6 +23,8 @@ bool isEmpty(Queue* queue);
 int getQueueSize(Queue* queue);
 void destroyQueue(Queue* queue);
 void removeNode(Queue* q, QueueNode* minNode);
+
+#endif
 
 
 

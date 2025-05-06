@@ -1,22 +1,34 @@
-#include "headers.h"
+
 #include "../models/scheduling_types.h"
+#include "headers.h"
 #include "PGS_MsgQ_Utilities.h"
 #include "Scheduler_log.h"
 #include <stdlib.h> // for atoi
 #include "queue.h"
 #include <limits.h> // for INT_MIN
 #include <math.h> // for pow
+#include "scheduler_algo.h"
+#include "scheduler_stats.h"
+#include "priQueue.h"
+#include "scheduler_helper.h"
 
 
-// max of two numbers usefull for calculating stats
-#define max(a, b) ((a) > (b) ? (a) : (b))
+#define PgSentAllProcesses SIGUSR1
+// bool saying pg is done sending processes
+bool PgDone = false;
+
+// if done sig is sent and we change that bool
+
+void handle_Pg_Done(int sig) {
+    if (sig == PgSentAllProcesses) {
+        PgDone = true;
+    }
+}
 
 
-
-void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWaiting, float* stddev);
-float calculateSTD(float totalWTA, int size, Queue* queue);
-void schedulerPerf(Queue* finishedQueue);
 void runRoundRobin(int quantum);
+void runSRTN_new(int msqid);
+void entireRR(int quantum);
 
 
 Queue *readyQueue; // queue of ready processes info
@@ -25,11 +37,20 @@ int msqid;         // id of message queue we use to communicate with PG
 
 int main(int argc, char *argv[])
 {
+
+    signal(PgSentAllProcesses, handle_Pg_Done);
     // initalize clock
     initClk();
     // get scheduling type from arguments ( we convert argument to int as it was string then to enum)
     enum scheduling_type algorithm = (enum scheduling_type)atoi(argv[1]);
     int processesCount = atoi(argv[2]);
+    // Get msqid
+        msqid = createPGSchedulerMsgQueue();
+        if (msqid == -1)
+        {
+            printf("Error getting msqid\n");
+            exit(1);
+        }
 
     // For RR
     int quantum;
@@ -38,83 +59,26 @@ int main(int argc, char *argv[])
     {
     case HPF:
         printf("Scheduling Algorithm is: Non-preemptive Highest Priority First (HPF)\n");
+        runHPF(msqid);
         break;
     case SRTN:
         printf("Scheduling Algorithm is: Shortest Remaining Time Next (SRTN)\n");
+
+        
+        runSRTN_new(msqid);
         break;
     case RR:
         printf("Scheduling Algorithm is: Round Robin (RR)\n");
         printf("Enter quantum value: ");
         scanf("%d", &quantum);
+        entireRR(quantum);
         break;
     default:
         printf("Invalid scheduling algorithm selected.\n");
         exit(1);
     }
-    // Get msqid
-    msqid = createPGSchedulerMsgQueue();
-    if (msqid == -1)
-    {
-        printf("Error getting msqid\n");
-        exit(1);
-    }
-
-    // Create queue of ready processes
-    readyQueue = createQueue();
-    // Create queue of finished process
-    finishQueue = createQueue();
-
-    // Initiate the Scheduler.log file 
-    initSchedulerLog();
-
-    // message buffer and send type to 1
-    PGSchedulerMsgBuffer msgBuffer;
-    msgBuffer.mtype = 1;
-    int algoPid = fork();
 
 
-
-    while (getClk() < 50)
-    {
-        // Recieve message
-        int msgStatus = ReceiveFromPG(&msgBuffer, msqid);
-        
-        if (msgStatus == -1) {
-            // If readyQueue has processes, keep running algorithm
-            if (algorithm == RR && !isEmpty(readyQueue)) {
-                runRoundRobin(quantum);
-            }
-        } else {
-
-            // Unpack to get process info
-            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-            // create process info (dynamic as to avoid rewrite)
-            ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
-            *processCopy = unpackedProcess;
-    
-            // enqueue that process 
-            enqueue(readyQueue, processCopy);
-            
-            // print to check ready queue is correct
-            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-                    processCopy->pid, getClk(), processCopy->arrivalTime);
-            
-            if (algorithm == RR && !isEmpty(readyQueue))
-            {
-                runRoundRobin(quantum);
-            }
-        }
-    }
-    
-
-    // TODO implement the scheduler :)
-    // ana edetak aho the type of scheduling algo check models hatal2y enum
-    // upon termination release the clock resources.
-
-
-    schedulerPerf(finishQueue);
-
-    // LATER destroyClk(true);
 }
 /*
 1) The scheduler needs to have these data ready at the end. So here is what data you need to keep track of:
@@ -127,74 +91,7 @@ int main(int argc, char *argv[])
 3) How does the process send that data to the scheduler? Probably using a message queue or signal.
 */
 
-// Creates the scheduler.perf file  --> just pass the finishedQueue 
-void schedulerPerf(Queue* finishedQueue) {
-    int CPU;
-    float AvgWTA, AvgWaiting, stddev;
-    calcStatistics(finishedQueue, &CPU, &AvgWTA, &AvgWaiting, &stddev);
 
-    FILE *file = fopen("scheduler.perf", "w");
-    if (file == NULL) {
-        perror("Error opening file");
-        return;
-    }
-
-    fprintf(file, "CPU utilization = %d%%\n", CPU); // %% -> %
-    fprintf(file, "Avg WTA = %.2f\n", AvgWTA);
-    fprintf(file, "Avg Waiting = %.2f\n", AvgWaiting);
-    fprintf(file, "Std WTA = %.2f\n", stddev);
-
-    fclose(file);
-}
-
-// Calculates all required variables for scheduler.perf file
-void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWaiting, float* stddev) {
-    
-    // Total time will be the maximum finishTime of all processes
-    int totalTime = INT_MIN;
-    int totalRunTime = 0;
-    float totalWTA = 0;
-    int totalWait = 0;
-    int processesCount = 0;
-    
-    // For standard Deviation calculation
-    Queue *stdQueue = createQueue(); 
-    ProcessInfo* process = NULL;
-    while (!isEmpty(finishedQueue)) {
-        process = (ProcessInfo *)dequeue(finishedQueue);
-        totalTime = max(totalTime, process->endTime);
-        totalRunTime += process->runTime;
-        float WTA = (float)(process->endTime - process->arrivalTime) / process->runTime;
-        // update WTA of process if it wasn't calculated
-        process->weightedTurnaroundTime = WTA;
-        totalWTA += WTA;
-        totalWait += process->waitingTime;
-        processesCount++;
-        // to be processed again in stddev calculations
-        enqueue(stdQueue, process);
-    }
-
-    float Utilization = (float)totalRunTime / totalTime;
-
-    *CPU = (int)(100 * Utilization);
-    *AvgWTA = totalWTA / processesCount;
-    *AvgWaiting = (float)totalWait / processesCount;
-    *stddev = calculateSTD(totalWTA, processesCount, stdQueue);
-
-}
-
-float calculateSTD(float totalWTA, int size, Queue* queue) {
-    
-    float stddev = 0;
-    float mean = totalWTA / (float)size;
-    ProcessInfo* process = NULL;
-    while (!isEmpty(queue)) {
-        process = (ProcessInfo *)dequeue(queue);
-        stddev += pow(process->weightedTurnaroundTime - mean, 2);
-    }
-    stddev = sqrt(stddev / (size - 1));
-    return stddev;
-}
 
 void runRoundRobin(int quantum) {
 
@@ -230,3 +127,154 @@ void runRoundRobin(int quantum) {
 
 }
 
+// Keep these functions
+void runSRTN_new(int msqid)
+{
+    // TODO: CHECK THESE INIT ARE OK
+    // initalize clock
+    initClk();
+    int time = getClk();
+    printf("THE TIME IS: %i\n",time);
+    // initalize scheduler to be able to scheduler
+    initSchedulerLog();
+    // Prepare message buffer
+    PGSchedulerMsgBuffer msgBuffer;
+    msgBuffer.mtype = 1;
+    // queue for ready processes
+    // pri queue and srt is the priority thing
+    PriQueue *priReadyQueue = createPriQueue();
+
+    Queue *finishQueue = createQueue();
+    // TODO: FIX WHILE LOOP CONDITION
+    // 3ayz while pg not done or queue not empty
+    
+
+    // || !(isEmptyPri(priReadyQueue)) TODO: FIX ERROR WHEN U ADD THIS
+    while(!PgDone )
+    {
+
+        // Blocks and waits till it receives a process
+
+        BlockingReceiveFromPG(&msgBuffer, msqid);
+        // Unpack to get process info
+        ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+        // create process info in shared memory to share with actual process
+        int shmid = CreateProcessInfoSHM_ID();
+
+        // attch to scheduler memory
+        ProcessInfo* process = (ProcessInfo*) shmat(shmid, NULL, 0);
+
+        // copy info to shared memory
+        *process = unpackedProcess;
+        process->shmid = shmid;
+
+                // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
+
+         printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+           process->pid, getClk(), process->arrivalTime);
+        // negative remaining time so srt has highest prioity
+        enqueuePri(priReadyQueue, process,-(process->remainingTime));
+
+
+        // Keep on extracting from msg queue till its empty
+        // must do that in case multiple processes have the same arrival time
+        while(ReceiveFromPG(&msgBuffer, msqid) != -1)
+        {
+        ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+
+        int shmid = CreateProcessInfoSHM_ID();
+
+        ProcessInfo* process = (ProcessInfo*) shmat(shmid, NULL, 0);
+
+
+        *process = unpackedProcess;
+        process->shmid = shmid;
+
+        //         // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
+
+        printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+            process->pid, getClk(), process->arrivalTime);
+                    // negative remaining time so srt has highest prioity
+        enqueuePri(priReadyQueue, process,-(process->remainingTime));
+        }
+
+        // TODO: THIS IS STILL run
+
+        // void * current_process;
+        // dequeuePri(priReadyQueue, &current_process, NULL);
+        // printf("before run proces\n");
+        // fflush(stdout);
+        // current_process = (ProcessInfo*) current_process;
+
+        // runProcess(current_process);
+        
+
+
+    }
+    printPointersPri(priReadyQueue,printProcessInfoPtr);
+
+
+
+
+
+
+    
+}
+void entireRR(int quantum){
+    // Create queue of ready processes
+    readyQueue = createQueue();
+    // Create queue of finished process
+    finishQueue = createQueue();
+
+    // Initiate the Scheduler.log file 
+    initSchedulerLog();
+
+    // message buffer and send type to 1
+    PGSchedulerMsgBuffer msgBuffer;
+    msgBuffer.mtype = 1;
+    int algoPid = fork();
+
+
+
+    while (getClk() < 50)
+    {
+        // Recieve message
+        int msgStatus = ReceiveFromPG(&msgBuffer, msqid);
+        
+        if (msgStatus == -1) {
+            // If readyQueue has processes, keep running algorithm
+            if (!isEmpty(readyQueue)) {
+                runRoundRobin(quantum);
+            }
+        } else {
+
+            // Unpack to get process info
+            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+            // create process info (dynamic as to avoid rewrite)
+            ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
+            *processCopy = unpackedProcess;
+    
+            // enqueue that process 
+            enqueue(readyQueue, processCopy);
+            
+            // print to check ready queue is correct
+            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+                    processCopy->pid, getClk(), processCopy->arrivalTime);
+            
+            if (!isEmpty(readyQueue))
+            {
+                runRoundRobin(quantum);
+            }
+        }
+    }
+    
+
+    // TODO implement the scheduler :)
+    // ana edetak aho the type of scheduling algo check models hatal2y enum
+    // upon termination release the clock resources.
+
+
+    schedulerPerf(finishQueue);
+
+    // LATER destroyClk(true);
+}

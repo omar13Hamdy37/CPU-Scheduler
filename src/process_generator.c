@@ -1,9 +1,14 @@
 #include "headers.h"
 #include "PGS_MsgQ_Utilities.h"
 #include "stdio.h"
+
 #include "loadFile.h"
 
+int msqid = -1;
+
 Queue *processQueue; // Queue of All Processes loaded from inputFile
+// rename sigusr1 to like tell scheduler no more remaining processes
+#define PgSentAllProcesses SIGUSR1
 
 // Prototype of functions
 void clearResources(int);
@@ -39,7 +44,7 @@ int main(int argc, char *argv[])
     } while (choice < 1 || choice > 3);
 
     // 3. Initiate and create the scheduler and clock processes.
-    int msqid = createPGSchedulerMsgQueue();
+     msqid = createPGSchedulerMsgQueue();
     if (msqid == -1)
     {
         printf("Error creating message queue");
@@ -97,7 +102,10 @@ int main(int argc, char *argv[])
             SendToScheduler(*process, msqid);
         }
     }
+
+    kill(scheduler_pid, PgSentAllProcesses);
     // wait for processes to be done
+
     wait(NULL);
 
     // 5. Create a data structure for processes and provide it with its parameters.
@@ -123,6 +131,7 @@ int AllocateProcess(int time, ProcessInfo **process)
 void clearResources(int signum)
 {
     // TODO Clears all resources in case of interruption
+    ClearMsgQ(msqid);
     destroyQueue(processQueue);
 }
 

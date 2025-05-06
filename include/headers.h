@@ -18,10 +18,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-
-typedef short bool;
-#define true 1
-#define false 0
+#include <stdbool.h>
 
 #define SHKEY 300
 
