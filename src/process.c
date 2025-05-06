@@ -3,36 +3,30 @@
 /* Modify this file as needed*/
 int remainingtime;
 
-int main(int agrc, char * argv[])
+int main(int agrc, char *argv[])
 {
     initClk();
     // get shmid passed as an argument
     int shmid = atoi(argv[1]);
     // get shared memory pointer
-    ProcessInfo* shm_ptr = (ProcessInfo*) shmat(shmid, NULL, 0);
-    
+    ProcessInfo *shm_ptr = (ProcessInfo *)shmat(shmid, NULL, 0);
 
-    // int prevClk = getClk();
-    // printf("here");
+    int prevClk = getClk();
 
-    // while (shm_ptr->remainingTime > 0)
-    // {
-    //     int currClk = getClk();
-    //     // if time passes decrement remaining time
-    //     if (currClk > prevClk)
-    //     {
+    while (shm_ptr->remainingTime > 0)
+    {
+        int currClk = getClk();
 
-    //         printProcessInfoPtr(shm_ptr);
-    //         printf("\n");
+        if (currClk > prevClk)
+        {
 
+            (shm_ptr->remainingTime)--;
 
-    //         (shm_ptr->remainingTime)--;
+            prevClk = currClk;
+        }
+    }
 
-    //         prevClk = currClk;
-    //     }
-    // }
-    
     destroyClk(false);
-    
+
     return 0;
 }

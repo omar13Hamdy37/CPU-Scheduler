@@ -6,12 +6,11 @@
 #include <stdlib.h> // for atoi
 #include "queue.h"
 #include <limits.h> // for INT_MIN
-#include <math.h> // for pow
+#include <math.h>   // for pow
 #include "scheduler_algo.h"
 #include "scheduler_stats.h"
 #include "priQueue.h"
 #include "scheduler_helper.h"
-
 
 #define PgSentAllProcesses SIGUSR1
 // bool saying pg is done sending processes
@@ -19,38 +18,40 @@ bool PgDone = false;
 
 // if done sig is sent and we change that bool
 
-void handle_Pg_Done(int sig) {
-    if (sig == PgSentAllProcesses) {
+void handle_Pg_Done(int sig)
+{
+    if (sig == PgSentAllProcesses)
+    {
         PgDone = true;
+        printf("SIGNAL RECEIVED\n");
     }
 }
-
 
 void runRoundRobin(int quantum);
 void runSRTN_new(int msqid);
 void entireRR(int quantum);
+// void runHPF();
 
-
-Queue *readyQueue; // queue of ready processes info
-Queue *finishQueue;
-int msqid;         // id of message queue we use to communicate with PG
+int totalNumProcesses ;
+int msqid; // id of message queue we use to communicate with PG
 
 int main(int argc, char *argv[])
 {
+
 
     signal(PgSentAllProcesses, handle_Pg_Done);
     // initalize clock
     initClk();
     // get scheduling type from arguments ( we convert argument to int as it was string then to enum)
     enum scheduling_type algorithm = (enum scheduling_type)atoi(argv[1]);
-    int processesCount = atoi(argv[2]);
+    totalNumProcesses = atoi(argv[2]);
     // Get msqid
-        msqid = createPGSchedulerMsgQueue();
-        if (msqid == -1)
-        {
-            printf("Error getting msqid\n");
-            exit(1);
-        }
+    msqid = createPGSchedulerMsgQueue();
+    if (msqid == -1)
+    {
+        printf("Error getting msqid\n");
+        exit(1);
+    }
 
     // For RR
     int quantum;
@@ -59,13 +60,13 @@ int main(int argc, char *argv[])
     {
     case HPF:
         printf("Scheduling Algorithm is: Non-preemptive Highest Priority First (HPF)\n");
-        runHPF(msqid);
+        // runHPF(msqid);
         break;
     case SRTN:
         printf("Scheduling Algorithm is: Shortest Remaining Time Next (SRTN)\n");
 
-        
         runSRTN_new(msqid);
+
         break;
     case RR:
         printf("Scheduling Algorithm is: Round Robin (RR)\n");
@@ -77,8 +78,7 @@ int main(int argc, char *argv[])
         printf("Invalid scheduling algorithm selected.\n");
         exit(1);
     }
-
-
+    destroyClk(true);
 }
 /*
 1) The scheduler needs to have these data ready at the end. So here is what data you need to keep track of:
@@ -91,19 +91,26 @@ int main(int argc, char *argv[])
 3) How does the process send that data to the scheduler? Probably using a message queue or signal.
 */
 
+void runRoundRobin(int quantum)
+{
+    Queue *readyQueue; // queue of ready processes info
+    Queue *finishQueue;
 
-
-void runRoundRobin(int quantum) {
-
-    int size = getQueueSize(readyQueue);
-    for (int i = 0; i < size; i++) {
+    int size = getQueueCount(readyQueue);
+    for (int i = 0; i < size; i++)
+    {
         ProcessInfo *proc = (ProcessInfo *)dequeue(readyQueue);
 
-        if (proc->state == WAITING) {
+        if (proc->state == WAITING)
+        {
             proc->startTime = getClk();
             proc->waitingTime = proc->startTime - proc->arrivalTime;
+
             logProcess(proc, getClk(), STARTED);
-        } else {
+        }
+        else
+        {
+            
             logProcess(proc, getClk(), RESUMED);
         }
         // min of remaining and quantum
@@ -111,30 +118,34 @@ void runRoundRobin(int quantum) {
 
         // Simulate running
         int start = getClk();
-        sleep(timeToRun);  // Sleep for the duration of timeToRun
+        sleep(timeToRun); // Sleep for the duration of timeToRun
 
         proc->remainingTime -= timeToRun;
 
-        if (proc->remainingTime <= 0) {
+        if (proc->remainingTime <= 0)
+        {
             proc->endTime = getClk();
             logProcess(proc, getClk(), FINISHED);
             enqueue(finishQueue, proc);
-        } else { // still needs time for processing
+        }
+        else
+        { // still needs time for processing
+            
             logProcess(proc, getClk(), STOPPED);
             enqueue(readyQueue, proc);
         }
     }
-
 }
 
 // Keep these functions
 void runSRTN_new(int msqid)
 {
+    int count = 0;
     // TODO: CHECK THESE INIT ARE OK
     // initalize clock
     initClk();
     int time = getClk();
-    printf("THE TIME IS: %i\n",time);
+
     // initalize scheduler to be able to scheduler
     initSchedulerLog();
     // Prepare message buffer
@@ -145,88 +156,173 @@ void runSRTN_new(int msqid)
     PriQueue *priReadyQueue = createPriQueue();
 
     Queue *finishQueue = createQueue();
+
     // TODO: FIX WHILE LOOP CONDITION
     // 3ayz while pg not done or queue not empty
-    
-
-    // || !(isEmptyPri(priReadyQueue)) TODO: FIX ERROR WHEN U ADD THIS
-    while(!PgDone )
+    ProcessInfo *currentProcess = NULL;
+    ProcessInfo *incomingProcess = NULL;
+    int *pri = malloc(sizeof(int));
+    // TODO: EDGECASE BA3AT AND I DIDNT RECEIVE AND LIST EMPTY
+    while (count != totalNumProcesses)
     {
 
-        // Blocks and waits till it receives a process
+        // // Blocks and waits till it receives a process
 
-        BlockingReceiveFromPG(&msgBuffer, msqid);
-        // Unpack to get process info
-        ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-        // create process info in shared memory to share with actual process
-        int shmid = CreateProcessInfoSHM_ID();
+        // BlockingReceiveFromPG(&msgBuffer, msqid);
+        // // Unpack to get process info
+        // ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+        // // create process info in shared memory to share with actual process
+        // int shmid = CreateProcessInfoSHM_ID();
 
-        // attch to scheduler memory
-        ProcessInfo* process = (ProcessInfo*) shmat(shmid, NULL, 0);
+        // // attch to scheduler memory
+        // ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
 
-        // copy info to shared memory
-        *process = unpackedProcess;
-        process->shmid = shmid;
+        // // copy info to shared memory
+        // *process = unpackedProcess;
+        // process->shmid = shmid;
 
-                // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
+        // // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
 
-         printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-           process->pid, getClk(), process->arrivalTime);
-        // negative remaining time so srt has highest prioity
-        enqueuePri(priReadyQueue, process,-(process->remainingTime));
-
+        // printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+        //        process->pid, getClk(), process->arrivalTime);
+        // // negative remaining time so srt has highest prioity
+        // enqueuePri(priReadyQueue, process, -(process->remainingTime));
 
         // Keep on extracting from msg queue till its empty
         // must do that in case multiple processes have the same arrival time
-        while(ReceiveFromPG(&msgBuffer, msqid) != -1)
+        while (ReceiveFromPG(&msgBuffer, msqid) != -1)
         {
-        ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
 
-        int shmid = CreateProcessInfoSHM_ID();
+            int shmid = CreateProcessInfoSHM_ID();
 
-        ProcessInfo* process = (ProcessInfo*) shmat(shmid, NULL, 0);
+            ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
+
+            *process = unpackedProcess;
+            process->shmid = shmid;
+
+            //         // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
+
+            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+                   process->pid, getClk(), process->arrivalTime);
+            // negative remaining time so srt has highest prioity
+            enqueuePri(priReadyQueue, process, -(process->remainingTime));
+
+   
+            
+        }
+        //--------------------------------------------
+
+        // If you're the first process you can run
+        if (currentProcess == NULL)
+        {
+ 
+
+            if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+            {
 
 
-        *process = unpackedProcess;
-        process->shmid = shmid;
+                runProcess(currentProcess);
+                currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                currentProcess->startTime = getClk();
+                logProcess(currentProcess,getClk(),STARTED);
 
-        //         // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
-
-        printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-            process->pid, getClk(), process->arrivalTime);
-                    // negative remaining time so srt has highest prioity
-        enqueuePri(priReadyQueue, process,-(process->remainingTime));
+            }
         }
 
-        // TODO: THIS IS STILL run
+        // if you are an incoming process and less rt you can run
 
-        // void * current_process;
-        // dequeuePri(priReadyQueue, &current_process, NULL);
-        // printf("before run proces\n");
-        // fflush(stdout);
-        // current_process = (ProcessInfo*) current_process;
+        else if (peekPri(priReadyQueue, (void **)&incomingProcess, pri) != 0)
+        {
 
-        // runProcess(current_process);
-        
+            if (incomingProcess->remainingTime < currentProcess->remainingTime)
+            {
+                pauseProcess(currentProcess);
+                enqueuePri(priReadyQueue, currentProcess, -(currentProcess->remainingTime));
+                currentProcess->lastStopTime = getClk();
+                logProcess(currentProcess,getClk(),STOPPED);
+
+
+                if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+                {
+                    runProcess(currentProcess);
+                    ProcessState state;
+                    if(currentProcess->state == STOPPED)
+                    {
+                        currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
+                        state = RESUMED;
+                    }
+                    else
+                    {
+                        state = STARTED;
+                        currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                        currentProcess->startTime = getClk();
+                    }
+
+
+                    logProcess(currentProcess,getClk(),state);
+
+                }
+            }
+        }
+
+        // if process done
+        if (currentProcess != NULL)
+        {
+
+            if (currentProcess->remainingTime <= 0)
+            {
+                // end
+                if(currentProcess->state != FINISHED)
+                {
+                count++;
+
+                currentProcess->endTime = getClk();
+                enqueue(finishQueue, currentProcess);
+                logProcess(currentProcess,getClk(),FINISHED);
+
+                }
+
+                if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+                {
+
+                    runProcess(currentProcess);
+                    ProcessState state;
+                    if(currentProcess->state == STOPPED)
+                    {
+                        currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
+                        state = RESUMED;
+                    }
+                    else
+                    {
+                        currentProcess->startTime = getClk();
+                        state = STARTED;
+                        currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                    }
+
+
+                    logProcess(currentProcess,getClk(),state);
+                }
+            }
+        }
 
 
     }
-    printPointersPri(priReadyQueue,printProcessInfoPtr);
+    printPointersQueue(finishQueue,printProcessInfoPtr);
+    schedulerPerf(finishQueue);
 
 
-
-
-
-
-    
 }
-void entireRR(int quantum){
+void entireRR(int quantum)
+{
+    Queue *readyQueue; // queue of ready processes info
+    Queue *finishQueue;
     // Create queue of ready processes
     readyQueue = createQueue();
     // Create queue of finished process
     finishQueue = createQueue();
 
-    // Initiate the Scheduler.log file 
+    // Initiate the Scheduler.log file
     initSchedulerLog();
 
     // message buffer and send type to 1
@@ -234,47 +330,146 @@ void entireRR(int quantum){
     msgBuffer.mtype = 1;
     int algoPid = fork();
 
-
-
     while (getClk() < 50)
     {
         // Recieve message
         int msgStatus = ReceiveFromPG(&msgBuffer, msqid);
-        
-        if (msgStatus == -1) {
+
+        if (msgStatus == -1)
+        {
             // If readyQueue has processes, keep running algorithm
-            if (!isEmpty(readyQueue)) {
+            if (!isEmpty(readyQueue))
+            {
                 runRoundRobin(quantum);
             }
-        } else {
+        }
+        else
+        {
 
             // Unpack to get process info
             ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
             // create process info (dynamic as to avoid rewrite)
             ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
             *processCopy = unpackedProcess;
-    
-            // enqueue that process 
+
+            // enqueue that process
             enqueue(readyQueue, processCopy);
-            
+
             // print to check ready queue is correct
             printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-                    processCopy->pid, getClk(), processCopy->arrivalTime);
-            
+                   processCopy->pid, getClk(), processCopy->arrivalTime);
+
             if (!isEmpty(readyQueue))
             {
                 runRoundRobin(quantum);
             }
         }
+
     }
-    
 
     // TODO implement the scheduler :)
     // ana edetak aho the type of scheduling algo check models hatal2y enum
     // upon termination release the clock resources.
 
-
     schedulerPerf(finishQueue);
 
     // LATER destroyClk(true);
 }
+
+// void runHPF(int msqid)
+// {
+
+//     initSchedulerLog(); // Initialize the log file
+
+//     Queue *readyQueue = createQueue(); // Create linked list queue
+//     PGSchedulerMsgBuffer msgBuffer;
+
+//     int timestep = 0;
+//     float totalCPUTime = 0;
+//     float totalTurnaroundTime = 0;
+//     float totalWaitingTime = 0;
+//     float totalWTA = 0;
+//     int numCompletedProcesses = 0;
+//     float squaredDiffWTA = 0;
+
+//     while (true)
+//     {
+//         // Receive new processes
+//         if (ReceiveFromPG(&msgBuffer, msqid) != -1)
+//         {
+//             ProcessInfo *newProcess = (ProcessInfo *)malloc(sizeof(ProcessInfo));
+//             *newProcess = UnpackMsgBuffer(msgBuffer);
+//             enqueue(readyQueue, newProcess);
+//         }
+
+//         // If there is a ready process
+//         // TODO CHECK THAT READY QUEUE NOT EMPTY AND PG NOT DONE
+//         if (!isEmpty(readyQueue))
+//         {
+//             ProcessInfo *selectedProcess = dequeue_highest_priority(readyQueue);
+
+//             int pid = fork();
+//             if (pid == 0)
+//             {
+//                 // Child process: execute "process"
+//                 char runtimeStr[10];
+//                 sprintf(runtimeStr, "%d", selectedProcess->runTime);
+//                 execl("./process", "process", runtimeStr, (char *)NULL);
+//                 perror("Failed to exec process");
+//                 exit(EXIT_FAILURE);
+//             }
+//             else if (pid > 0)
+//             {
+//                 // Parent process: Scheduler
+//                 selectedProcess->pid = pid;
+//                 selectedProcess->startTime = timestep;
+//                 selectedProcess->state = STARTED;
+
+//                 logProcess(selectedProcess, timestep, STARTED);
+
+//                 // Simulate running for runTime units
+//                 for (int i = 0; i < selectedProcess->runTime; i++)
+//                 {
+//                     usleep(1000);
+//                     timestep++;
+//                     totalCPUTime++;
+//                 }
+
+//                 // Wait for the child to finish
+//                 waitpid(pid, NULL, 0);
+
+//                 selectedProcess->endTime = timestep;
+//                 selectedProcess->turnaroundTime = selectedProcess->endTime - selectedProcess->arrivalTime;
+//                 selectedProcess->waitingTime = selectedProcess->turnaroundTime - selectedProcess->runTime;
+//                 selectedProcess->weightedTurnaroundTime = (float)selectedProcess->turnaroundTime / selectedProcess->runTime;
+//                 selectedProcess->state = FINISHED;
+
+//                 totalTurnaroundTime += selectedProcess->turnaroundTime;
+//                 totalWaitingTime += selectedProcess->waitingTime;
+//                 totalWTA += selectedProcess->weightedTurnaroundTime;
+//                 squaredDiffWTA += selectedProcess->weightedTurnaroundTime * selectedProcess->weightedTurnaroundTime;
+//                 numCompletedProcesses++;
+
+//                 logProcess(selectedProcess, timestep, FINISHED);
+
+//                 free(selectedProcess); // Free the memory
+//             }
+//             else
+//             {
+//                 perror("Failed to fork");
+//             }
+//         }
+//         if (isEmpty(readyQueue))
+//         {
+//             break;
+//         }
+//         usleep(1000); // simulate 1ms timestep
+//         timestep++;
+//     }
+//     float avgWTA = totalWTA / numCompletedProcesses;
+//     float avgWaitingTime = totalWaitingTime / numCompletedProcesses;
+//     float stdDevWTA = sqrt(squaredDiffWTA / numCompletedProcesses - avgWTA * avgWTA);
+//     float cpuUtilization = (totalCPUTime / timestep) * 100;
+
+//     destroyQueue(readyQueue); // If you later add termination condition
+// }

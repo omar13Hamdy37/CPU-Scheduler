@@ -22,6 +22,7 @@ typedef struct
     int endTime;     // useful for stats
     int waitingTime; // useful for stats
     int priority;    // useful for scheduling algorithms
+    int lastStopTime; // used to calculate wait time while processing
 
     int remainingTime;          // useful for process itself, scheduler
     int turnaroundTime;         // useful for stats

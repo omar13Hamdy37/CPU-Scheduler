@@ -1,7 +1,6 @@
 #include "headers.h"
 #include "PGS_MsgQ_Utilities.h"
 #include "stdio.h"
-
 #include "loadFile.h"
 
 int msqid = -1;
@@ -21,7 +20,7 @@ int main(int argc, char *argv[])
     // 1. Read the input files.
     processQueue = createQueue(); // Queue Creation
     loadInputFile("processes.txt", processQueue);
-    int size = getQueueSize(processQueue);
+    int count = getQueueCount(processQueue);
     // Todo: add parameters if needed
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
 
@@ -78,10 +77,10 @@ int main(int argc, char *argv[])
     {
         // Choice and size should be converted to string and passed as an argument
         char choice_str[10];
-        char size_str[10];
+        char count_str[10];
         sprintf(choice_str, "%d", choice);
-        sprintf(size_str, "%d", size);
-        execl("./bin/scheduler.out", "scheduler.out", choice_str, size_str, NULL);
+        sprintf(count_str, "%d", count);
+        execl("./bin/scheduler.out", "scheduler.out", choice_str, count_str, NULL);
         perror("Failed to exec scheduler.out");
     }
     // 4. Use this function after creating the clock process to initialize clock
@@ -106,12 +105,16 @@ int main(int argc, char *argv[])
     kill(scheduler_pid, PgSentAllProcesses);
     // wait for processes to be done
 
-    wait(NULL);
+    waitpid(scheduler_pid, NULL, 0); // Wait for scheduler to finish processing
+
+
 
     // 5. Create a data structure for processes and provide it with its parameters.
     // 6. Send the information to the scheduler at the appropriate time.
     // 7. Clear clock resources
     destroyClk(true);
+    printf("exiting\n");
+
 }
 
 int AllocateProcess(int time, ProcessInfo **process)

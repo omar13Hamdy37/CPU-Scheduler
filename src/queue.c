@@ -56,14 +56,14 @@ bool isEmpty(Queue* queue) {
 }
 
 // get size of the queue
-int getQueueSize(Queue* queue) {
-    int size = 0;
+int getQueueCount(Queue* queue) {
+    int count = 0;
     QueueNode* current = queue->front;
     while (current) {
-        size++;
+        count++;
         current = current->next;
     }
-    return size;
+    return count;
 }
 
 void destroyQueue(Queue* queue) {
@@ -114,5 +114,16 @@ void removeNode(Queue *q, QueueNode *minNode)
 
     // Free the memory allocated for the node
     free(minNode);
+}
+
+void printPointersQueue(Queue* q, void (*printFn)(void*)) {
+    QueueNode* current = q->front;
+    int idx = 0;
+    while (current) {
+        printf("Index %d: ", idx++);
+        printFn(current->data);
+        printf("\n");
+        current = current->next;
+    }
 }
 

@@ -67,6 +67,6 @@ float calculateSTD(float totalWTA, int size, Queue* queue) {
         process = (ProcessInfo *)dequeue(queue);
         stddev += pow(process->weightedTurnaroundTime - mean, 2);
     }
-    stddev = sqrt(stddev / (size - 1));
+    stddev = sqrt(stddev / (size));
     return stddev;
 }

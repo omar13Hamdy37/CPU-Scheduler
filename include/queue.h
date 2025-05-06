@@ -20,9 +20,10 @@ void enqueue(Queue* queue, void* data);
 void* dequeue(Queue* queue);
 void* peek(Queue* queue);
 bool isEmpty(Queue* queue);
-int getQueueSize(Queue* queue);
+int getQueueCount(Queue* queue);
 void destroyQueue(Queue* queue);
 void removeNode(Queue* q, QueueNode* minNode);
+void printPointersQueue(Queue* q, void (*printFn)(void*));
 
 #endif
 

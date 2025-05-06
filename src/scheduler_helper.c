@@ -12,7 +12,7 @@ void runProcess(ProcessInfo *process)
     {
         char shmidSTR[12];
         sprintf(shmidSTR, "%d", process->shmid);
-        execl("./process.out", "./process.out", shmidSTR, NULL);
+        execl("./bin/process.out", "./process.out", shmidSTR, NULL);
         // only prints if couldnt' execl
         perror("execl failed");
         exit(EXIT_FAILURE);
