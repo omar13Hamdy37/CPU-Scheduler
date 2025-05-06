@@ -22,51 +22,52 @@ void schedulerPerf(Queue* finishedQueue) {
     fclose(file);
 }
 
-// Calculates all required variables for scheduler.perf file
 void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWaiting, float* stddev) {
-    
-    // Total time will be the maximum finishTime of all processes
     int totalTime = INT_MIN;
     int totalRunTime = 0;
     float totalWTA = 0;
     int totalWait = 0;
     int processesCount = 0;
     
-    // For standard Deviation calculation
-    Queue *stdQueue = createQueue(); 
-    ProcessInfo* process = NULL;
-    while (!isEmpty(finishedQueue)) {
-        process = (ProcessInfo *)dequeue(finishedQueue);
+    // For standard Deviation calculation (no need to create a new queue)
+    float sum = 0;
+    float sumSq = 0;
+    QueueNode* current = finishedQueue->front;
+
+    while (current != NULL) {
+        ProcessInfo* process = (ProcessInfo*)current->data;
+        
+        // Update max finish time
         totalTime = max(totalTime, process->endTime);
+        
+        // Sum total run time and total wait time
         totalRunTime += process->runTime;
+        totalWait += process->waitingTime;
+
+        // Calculate WTA and accumulate total WTA
         float WTA = (float)(process->endTime - process->arrivalTime) / process->runTime;
-        // update WTA of process if it wasn't calculated
         process->weightedTurnaroundTime = WTA;
         totalWTA += WTA;
-        totalWait += process->waitingTime;
+
+        // For stddev calculation
+        sum += WTA;
+        sumSq += WTA * WTA;
+        
+        // Process count
         processesCount++;
-        // to be processed again in stddev calculations
-        enqueue(stdQueue, process);
+
+        // Move to next process
+        current = current->next;
     }
 
+    // Calculate CPU utilization
     float Utilization = (float)totalRunTime / totalTime;
-
     *CPU = (int)(100 * Utilization);
+
+    // Calculate averages
     *AvgWTA = totalWTA / processesCount;
     *AvgWaiting = (float)totalWait / processesCount;
-    *stddev = calculateSTD(totalWTA, processesCount, stdQueue);
 
-}
-
-float calculateSTD(float totalWTA, int size, Queue* queue) {
-    
-    float stddev = 0;
-    float mean = totalWTA / (float)size;
-    ProcessInfo* process = NULL;
-    while (!isEmpty(queue)) {
-        process = (ProcessInfo *)dequeue(queue);
-        stddev += pow(process->weightedTurnaroundTime - mean, 2);
-    }
-    stddev = sqrt(stddev / (size));
-    return stddev;
+    // Calculate standard deviation
+    *stddev = sqrt((sumSq / processesCount) - (pow(sum / processesCount, 2)));
 }

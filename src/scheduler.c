@@ -30,7 +30,7 @@ void handle_Pg_Done(int sig)
 void runRoundRobin(int quantum);
 void runSRTN_new(int msqid);
 void entireRR(int quantum);
-// void runHPF();
+void runHPF_new(int msqid);
 
 int totalNumProcesses ;
 int msqid; // id of message queue we use to communicate with PG
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     {
     case HPF:
         printf("Scheduling Algorithm is: Non-preemptive Highest Priority First (HPF)\n");
-        // runHPF(msqid);
+        runHPF_new(msqid);
         break;
     case SRTN:
         printf("Scheduling Algorithm is: Shortest Remaining Time Next (SRTN)\n");
@@ -312,6 +312,95 @@ void runSRTN_new(int msqid)
     schedulerPerf(finishQueue);
 
 
+}
+void runHPF_new(int msqid) {
+    int count = 0;
+    // initalize clock
+    initClk();
+    // initalize scheduler to be able to scheduler
+    initSchedulerLog();
+    // Prepare message buffer
+    PGSchedulerMsgBuffer msgBuffer;
+    msgBuffer.mtype = 1;
+    // queue for ready processes
+    // pri queue and pri is the priority thing
+    PriQueue *priReadyQueue = createPriQueue();
+
+    Queue *finishQueue = createQueue();
+
+    // TODO: FIX WHILE LOOP CONDITION
+    // 3ayz while pg not done or queue not empty
+    ProcessInfo *currentProcess = NULL;
+    int *pri = malloc(sizeof(int));
+    while (count != totalNumProcesses)
+    {
+        // Keep on extracting from msg queue till its empty
+        // must do that in case multiple processes have the same arrival time
+        while (ReceiveFromPG(&msgBuffer, msqid) != -1)
+        {
+            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+
+            int shmid = CreateProcessInfoSHM_ID();
+
+            ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
+
+            *process = unpackedProcess;
+            process->shmid = shmid;
+
+            // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
+
+            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+                   process->pid, getClk(), process->arrivalTime);
+            // negative priority so pri has highest prioity
+            enqueuePri(priReadyQueue, process, -(process->priority));
+            
+        }
+
+        // If you're the first process you can run
+        if (currentProcess == NULL)
+        {
+
+            if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+            {
+
+                runProcess(currentProcess);
+                currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                currentProcess->startTime = getClk();
+                logProcess(currentProcess,getClk(),STARTED);
+
+            }
+        }
+
+        // if process done
+        if (currentProcess != NULL)
+        {
+
+            if (currentProcess->remainingTime <= 0)
+            {
+                // end
+                if(currentProcess->state != FINISHED)
+                {
+                    count++;
+
+                    currentProcess->endTime = getClk();
+                    enqueue(finishQueue, currentProcess);
+                    logProcess(currentProcess,getClk(),FINISHED);
+                }
+
+                if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+                {
+
+                    runProcess(currentProcess);
+                    currentProcess->startTime = getClk();
+                    currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+
+                    logProcess(currentProcess,getClk(),STARTED);
+                }
+            }
+        }
+
+    }
+    schedulerPerf(finishQueue);
 }
 void entireRR(int quantum)
 {
