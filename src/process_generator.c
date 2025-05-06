@@ -16,6 +16,7 @@ int main(int argc, char *argv[])
     // 1. Read the input files.
     processQueue = createQueue(); // Queue Creation
     loadInputFile("processes.txt", processQueue);
+    int size = getQueueSize(processQueue);
     // Todo: add parameters if needed
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
 
@@ -70,10 +71,12 @@ int main(int argc, char *argv[])
     }
     else if (scheduler_pid == 0)
     {
-        // Choice should be converted to string and passed as an argument
+        // Choice and size should be converted to string and passed as an argument
         char choice_str[10];
+        char size_str[10];
         sprintf(choice_str, "%d", choice);
-        execl("./bin/scheduler.out", "scheduler.out", choice_str, NULL);
+        sprintf(size_str, "%d", size);
+        execl("./bin/scheduler.out", "scheduler.out", choice_str, size_str, NULL);
         perror("Failed to exec scheduler.out");
     }
     // 4. Use this function after creating the clock process to initialize clock

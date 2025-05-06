@@ -25,7 +25,7 @@ int SendToScheduler( ProcessInfo processInfo, int msqid)
 // msgFromPG passed will now contain message. returns -1 if unsuccessful.
 int ReceiveFromPG( PGSchedulerMsgBuffer * msgFromPG , int msqid)
 {
-    return msgrcv(msqid, msgFromPG, sizeof(msgFromPG->processInfo), 1, !IPC_NOWAIT);
+    return msgrcv(msqid, msgFromPG, sizeof(msgFromPG->processInfo), 1, IPC_NOWAIT);
     
 }
 

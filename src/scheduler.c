@@ -7,15 +7,20 @@
 #include <limits.h> // for INT_MIN
 #include <math.h> // for pow
 
+
 // max of two numbers usefull for calculating stats
 #define max(a, b) ((a) > (b) ? (a) : (b))
+
+
 
 void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWaiting, float* stddev);
 float calculateSTD(float totalWTA, int size, Queue* queue);
 void schedulerPerf(Queue* finishedQueue);
+void runRoundRobin(int quantum);
 
 
 Queue *readyQueue; // queue of ready processes info
+Queue *finishQueue;
 int msqid;         // id of message queue we use to communicate with PG
 
 int main(int argc, char *argv[])
@@ -24,6 +29,10 @@ int main(int argc, char *argv[])
     initClk();
     // get scheduling type from arguments ( we convert argument to int as it was string then to enum)
     enum scheduling_type algorithm = (enum scheduling_type)atoi(argv[1]);
+    int processesCount = atoi(argv[2]);
+
+    // For RR
+    int quantum;
     // Print to check algorithm choice correct
     switch (algorithm)
     {
@@ -35,6 +44,8 @@ int main(int argc, char *argv[])
         break;
     case RR:
         printf("Scheduling Algorithm is: Round Robin (RR)\n");
+        printf("Enter quantum value: ");
+        scanf("%d", &quantum);
         break;
     default:
         printf("Invalid scheduling algorithm selected.\n");
@@ -50,6 +61,8 @@ int main(int argc, char *argv[])
 
     // Create queue of ready processes
     readyQueue = createQueue();
+    // Create queue of finished process
+    finishQueue = createQueue();
 
     // Initiate the Scheduler.log file 
     initSchedulerLog();
@@ -57,37 +70,49 @@ int main(int argc, char *argv[])
     // message buffer and send type to 1
     PGSchedulerMsgBuffer msgBuffer;
     msgBuffer.mtype = 1;
-    while (true)
+    int algoPid = fork();
+
+
+
+    while (getClk() < 50)
     {
         // Recieve message
-        ReceiveFromPG(&msgBuffer, msqid);
-        // Unpack to get process info
-        ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-        // create process info (dynamic as to avoid rewrite)
-        ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
-        *processCopy = unpackedProcess;
+        int msgStatus = ReceiveFromPG(&msgBuffer, msqid);
+        
+        if (msgStatus == -1) {
+            // If readyQueue has processes, keep running algorithm
+            if (algorithm == RR && !isEmpty(readyQueue)) {
+                runRoundRobin(quantum);
+            }
+        } else {
 
-        // enqueue that process 
-        enqueue(readyQueue, processCopy);
-        
-        // print to check ready queue is correct
-        printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-               processCopy->pid, getClk(), processCopy->arrivalTime);
-        
-        // Simple example of how to use the logProcess function...
-        // make sure to call the function each time a process changes its state 
-        // parameters->[process, current time, newState of the process]
-        logProcess(processCopy, getClk(), STARTED);
+            // Unpack to get process info
+            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+            // create process info (dynamic as to avoid rewrite)
+            ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
+            *processCopy = unpackedProcess;
+    
+            // enqueue that process 
+            enqueue(readyQueue, processCopy);
+            
+            // print to check ready queue is correct
+            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+                    processCopy->pid, getClk(), processCopy->arrivalTime);
+            
+            if (algorithm == RR && !isEmpty(readyQueue))
+            {
+                runRoundRobin(quantum);
+            }
+        }
     }
+    
 
     // TODO implement the scheduler :)
     // ana edetak aho the type of scheduling algo check models hatal2y enum
     // upon termination release the clock resources.
 
-    /*
-        use function like this
-        schedulerPerf(finishQueue);
-    */
+
+    schedulerPerf(finishQueue);
 
     // LATER destroyClk(true);
 }
@@ -170,3 +195,38 @@ float calculateSTD(float totalWTA, int size, Queue* queue) {
     stddev = sqrt(stddev / (size - 1));
     return stddev;
 }
+
+void runRoundRobin(int quantum) {
+
+    int size = getQueueSize(readyQueue);
+    for (int i = 0; i < size; i++) {
+        ProcessInfo *proc = (ProcessInfo *)dequeue(readyQueue);
+
+        if (proc->state == WAITING) {
+            proc->startTime = getClk();
+            proc->waitingTime = proc->startTime - proc->arrivalTime;
+            logProcess(proc, getClk(), STARTED);
+        } else {
+            logProcess(proc, getClk(), RESUMED);
+        }
+        // min of remaining and quantum
+        int timeToRun = (proc->remainingTime < quantum) ? proc->remainingTime : quantum;
+
+        // Simulate running
+        int start = getClk();
+        sleep(timeToRun);  // Sleep for the duration of timeToRun
+
+        proc->remainingTime -= timeToRun;
+
+        if (proc->remainingTime <= 0) {
+            proc->endTime = getClk();
+            logProcess(proc, getClk(), FINISHED);
+            enqueue(finishQueue, proc);
+        } else { // still needs time for processing
+            logProcess(proc, getClk(), STOPPED);
+            enqueue(readyQueue, proc);
+        }
+    }
+
+}
+

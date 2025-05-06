@@ -43,6 +43,8 @@ void logProcess (ProcessInfo* process, int timestep, ProcessState newState) {
                     timestep, pid, arriveTime, runTime, remainingTime, waitingTime);
             break;
         case FINISHED:
+            TA = process->endTime - process->arrivalTime;
+            WTA = (float)TA / runTime;
             fprintf(fp, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %.2f\n",
                     timestep, pid, arriveTime, runTime, remainingTime, waitingTime, TA, WTA);
             break;
