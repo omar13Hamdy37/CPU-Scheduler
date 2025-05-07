@@ -10,7 +10,7 @@
 #include <signal.h>      // for kill, SIGSTOP, SIGCONT, SIGKILL
 #include <sys/ipc.h>     // for IPC_PRIVATE
 #include <sys/shm.h>     // for shmget
-
+#include <queue.h>
 
 
 
@@ -19,5 +19,6 @@ void pauseProcess(ProcessInfo * process);
 void resumeProcess(ProcessInfo * process);
 void stopProcess(ProcessInfo * process);
 int CreateProcessInfoSHM_ID();
+
 
 #endif

@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     } while (choice < 1 || choice > 3);
 
     // 3. Initiate and create the scheduler and clock processes.
-     msqid = createPGSchedulerMsgQueue();
+    msqid = createPGSchedulerMsgQueue();
     if (msqid == -1)
     {
         printf("Error creating message queue");
@@ -107,13 +107,12 @@ int main(int argc, char *argv[])
 
     waitpid(scheduler_pid, NULL, 0); // Wait for scheduler to finish processing
 
-
-
     // 5. Create a data structure for processes and provide it with its parameters.
     // 6. Send the information to the scheduler at the appropriate time.
     // 7. Clear clock resources
+    ClearMsgQ(msqid);
+
     destroyClk(true);
-    printf("exiting\n");
 
 }
 
@@ -134,8 +133,13 @@ int AllocateProcess(int time, ProcessInfo **process)
 void clearResources(int signum)
 {
     // TODO Clears all resources in case of interruption
-    ClearMsgQ(msqid);
-    destroyQueue(processQueue);
+    if (signum == SIGINT)
+    {
+        printf("Clear GENERATOR CALLED\n");
+        ClearMsgQ(msqid);
+        destroyQueue(processQueue);
+        destroyClk(false);
+    }
 }
 
 /*
