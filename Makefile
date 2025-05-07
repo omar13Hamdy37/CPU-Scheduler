@@ -10,7 +10,7 @@ build:
 	$(CC) $(CFLAGS) $(SRC)/PGS_MsgQ_Utilities.c $(SRC)/queue.c $(SRC)/loadFile.c $(SRC)/process_generator.c -o $(BIN)/process_generator.out
 	$(CC) $(CFLAGS) $(SRC)/clk.c -o $(BIN)/clk.out
 	$(CC) $(CFLAGS) $(SRC)/PGS_MsgQ_Utilities.c $(SRC)/queue.c $(SRC)/Scheduler_log.c $(SRC)/scheduler_helper.c  $(SRC)/scheduler_stats.c $(SRC)/priQueue.c $(SRC)/scheduler.c -o $(BIN)/scheduler.out -lm
-	$(CC) $(CFLAGS) $(SRC)/process.c -o $(BIN)/process.out
+	$(CC) $(CFLAGS) $(SRC)/scheduler_helper.c  $(SRC)/process.c -o $(BIN)/process.out
 	$(CC) $(CFLAGS) $(SRC)/test_generator.c -o $(BIN)/test_generator.out
 
 clean:

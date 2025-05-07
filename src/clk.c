@@ -11,9 +11,12 @@ int shmid;
 
 /* Clear the resources before exit */
 void cleanup(int signum)
+
 {
+
     shmctl(shmid, IPC_RMID, NULL);
     printf("Clock terminating!\n");
+    system("ipcrm -a");
     exit(0);
 }
 
@@ -42,5 +45,4 @@ int main(int argc, char *argv[])
         sleep(1);
         (*shmaddr)++;
     }
-
 }

@@ -34,7 +34,12 @@ void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWai
     float sumSq = 0;
     QueueNode* current = finishedQueue->front;
 
-    while (current != NULL) {
+    if (current != NULL)
+
+    {
+        int count = getQueueCount(finishedQueue);
+        for (int i = 0; i < count; i++)
+        {
         ProcessInfo* process = (ProcessInfo*)current->data;
         
         // Update max finish time
@@ -57,6 +62,7 @@ void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWai
         processesCount++;
         // Move to next process
         current = current->next;
+        }
     }
 
     // Calculate CPU utilization

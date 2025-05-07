@@ -8,25 +8,21 @@ int createPGSchedulerMsgQueue()
 
     int msqid = msgget(key, IPC_CREAT | 0666); // Creates a message queue if it doesn't exist.
     return msqid;
-
 }
 
 // Sends process to scheduler using message queue. returns -1 if failed.
-int SendToScheduler( ProcessInfo processInfo, int msqid)
+int SendToScheduler(ProcessInfo processInfo, int msqid)
 {
-     PGSchedulerMsgBuffer MsgToScheduler;
+    PGSchedulerMsgBuffer MsgToScheduler;
     MsgToScheduler.mtype = 1;
     MsgToScheduler.processInfo = processInfo;
 
     return msgsnd(msqid, &MsgToScheduler, sizeof(MsgToScheduler.processInfo), !IPC_NOWAIT);
-    
-
 }
 // msgFromPG passed will now contain message. returns -1 if no message in queue.
-int ReceiveFromPG( PGSchedulerMsgBuffer * msgFromPG , int msqid)
+int ReceiveFromPG(PGSchedulerMsgBuffer *msgFromPG, int msqid)
 {
     return msgrcv(msqid, msgFromPG, sizeof(msgFromPG->processInfo), 1, IPC_NOWAIT);
-    
 }
 
 // msgFromPG passed will now contain message. BLOCKS till a msg is sent
@@ -36,18 +32,16 @@ int BlockingReceiveFromPG(PGSchedulerMsgBuffer *msgFromPG, int msqid)
     return msgrcv(msqid, msgFromPG, sizeof(msgFromPG->processInfo), 1, 0);
 }
 
-
 // unpacks msgFromPG to get processInfo
- ProcessInfo UnpackMsgBuffer( PGSchedulerMsgBuffer  msgFromPG)
+ProcessInfo UnpackMsgBuffer(PGSchedulerMsgBuffer msgFromPG)
 {
     return msgFromPG.processInfo;
 }
 
 void ClearMsgQ(int msqid)
 {
-    if(msqid != -1)
+    if (msqid != -1)
     {
-    msgctl(msqid, IPC_RMID, NULL);
+        msgctl(msqid, IPC_RMID, NULL);
     }
-
 }

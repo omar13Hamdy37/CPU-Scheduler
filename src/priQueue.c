@@ -42,13 +42,12 @@ void enqueuePri(PriQueue *q, void *item, int pri)
 // DONT PUT NULL ANYWHERE
 int dequeuePri(PriQueue *q, void **item, int *pri)
 {
-  
+
     if (!(q->head))
     {
 
         return 0;
     }
-
 
     PriNode *temp = q->head;
 
@@ -58,9 +57,7 @@ int dequeuePri(PriQueue *q, void **item, int *pri)
 
     q->head = q->head->next;
 
-
     free(temp);
-
 
     return 1;
 }

@@ -12,6 +12,7 @@
         "scheduler_algo.h": "c",
         "stdlib.h": "c",
         "priqueue.h": "c",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "scheduler_helper.h": "c"
     }
 }

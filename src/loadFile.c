@@ -13,7 +13,7 @@ void loadInputFile(char *fileName, Queue *queue)
 
     char line[256];
     // Skip the comment line
-    fgets(line, sizeof(line), file); 
+    fgets(line, sizeof(line), file);
 
     int id, arrivalTime, runTime, priority;
     while (fscanf(file, "%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority) != EOF)

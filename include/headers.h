@@ -4,7 +4,6 @@
 // All your content here
 // structs, defines, function prototypes, etc.
 
-
 #include <stdio.h> //if you don't use scanf/printf change this include
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -26,8 +25,6 @@
 // don't mess with this variable//
 int *shmaddr; //
 //===============================
-
-
 
 int getClk()
 {
@@ -59,13 +56,15 @@ void initClk()
  *                      It terminates the whole system and releases resources.
  */
 
-void destroyClk(bool terminateAll)
+void destroyClk(bool terminateAll, int num)
 {
 
     shmdt(shmaddr);
+    printf("DETACHED %i\n", num);
 
     if (terminateAll)
     {
+
         killpg(getpgrp(), SIGINT);
     }
 }

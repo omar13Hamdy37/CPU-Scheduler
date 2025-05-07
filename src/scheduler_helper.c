@@ -1,8 +1,5 @@
 #include "./scheduler_helper.h"
 
-
-
-
 // Function to run process (begin)
 void runProcess(ProcessInfo *process)
 {
@@ -41,5 +38,4 @@ void stopProcess(ProcessInfo *process)
 int CreateProcessInfoSHM_ID()
 {
     return shmget(IPC_PRIVATE, sizeof(ProcessInfo), IPC_CREAT | 0666);
-
 }
