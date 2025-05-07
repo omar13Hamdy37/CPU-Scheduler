@@ -55,7 +55,6 @@ void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWai
         
         // Process count
         processesCount++;
-
         // Move to next process
         current = current->next;
     }

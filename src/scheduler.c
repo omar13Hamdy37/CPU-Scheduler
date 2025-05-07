@@ -27,10 +27,9 @@ void handle_Pg_Done(int sig)
     }
 }
 
-void runRoundRobin(int quantum);
 void runSRTN_new(int msqid);
-void entireRR(int quantum);
 void runHPF_new(int msqid);
+void runRR_new(int msqid, int quantum);
 
 int totalNumProcesses ;
 int msqid; // id of message queue we use to communicate with PG
@@ -72,7 +71,7 @@ int main(int argc, char *argv[])
         printf("Scheduling Algorithm is: Round Robin (RR)\n");
         printf("Enter quantum value: ");
         scanf("%d", &quantum);
-        entireRR(quantum);
+        runRR_new(msqid, quantum);
         break;
     default:
         printf("Invalid scheduling algorithm selected.\n");
@@ -90,52 +89,6 @@ int main(int argc, char *argv[])
 2) So when a process is done it sends a message to the scheduler with the data it needs to calculate the above.
 3) How does the process send that data to the scheduler? Probably using a message queue or signal.
 */
-
-void runRoundRobin(int quantum)
-{
-    Queue *readyQueue; // queue of ready processes info
-    Queue *finishQueue;
-
-    int size = getQueueCount(readyQueue);
-    for (int i = 0; i < size; i++)
-    {
-        ProcessInfo *proc = (ProcessInfo *)dequeue(readyQueue);
-
-        if (proc->state == WAITING)
-        {
-            proc->startTime = getClk();
-            proc->waitingTime = proc->startTime - proc->arrivalTime;
-
-            logProcess(proc, getClk(), STARTED);
-        }
-        else
-        {
-            
-            logProcess(proc, getClk(), RESUMED);
-        }
-        // min of remaining and quantum
-        int timeToRun = (proc->remainingTime < quantum) ? proc->remainingTime : quantum;
-
-        // Simulate running
-        int start = getClk();
-        sleep(timeToRun); // Sleep for the duration of timeToRun
-
-        proc->remainingTime -= timeToRun;
-
-        if (proc->remainingTime <= 0)
-        {
-            proc->endTime = getClk();
-            logProcess(proc, getClk(), FINISHED);
-            enqueue(finishQueue, proc);
-        }
-        else
-        { // still needs time for processing
-            
-            logProcess(proc, getClk(), STOPPED);
-            enqueue(readyQueue, proc);
-        }
-    }
-}
 
 // Keep these functions
 void runSRTN_new(int msqid)
@@ -306,7 +259,6 @@ void runSRTN_new(int msqid)
             }
         }
 
-
     }
     printPointersQueue(finishQueue,printProcessInfoPtr);
     schedulerPerf(finishQueue);
@@ -402,67 +354,152 @@ void runHPF_new(int msqid) {
     }
     schedulerPerf(finishQueue);
 }
-void entireRR(int quantum)
-{
-    Queue *readyQueue; // queue of ready processes info
-    Queue *finishQueue;
-    // Create queue of ready processes
-    readyQueue = createQueue();
-    // Create queue of finished process
-    finishQueue = createQueue();
 
-    // Initiate the Scheduler.log file
+void runRR_new(int msqid, int quantum) {
+    int count = 0;
+    // initalize clock
+    initClk();
+    // initalize scheduler to be able to scheduler
     initSchedulerLog();
-
-    // message buffer and send type to 1
+    // Prepare message buffer
     PGSchedulerMsgBuffer msgBuffer;
     msgBuffer.mtype = 1;
-    int algoPid = fork();
 
-    while (getClk() < 50)
+    // Time at which current process started its runningTime 
+    int prevStartTime;
+    // queue for ready processes
+    // pri queue and pri is the priority thing (used for sorting processes with same arrival time by their priority)
+    PriQueue *priReadyQueue = createPriQueue();
+    // Actual readyQueue for RR
+    Queue *ReadyQueue = createQueue();
+    Queue *finishQueue = createQueue();
+
+    // TODO: FIX WHILE LOOP CONDITION
+    // 3ayz while pg not done or queue not empty
+    ProcessInfo *currentProcess = NULL;
+    ProcessInfo *temp = NULL;
+    int *pri = malloc(sizeof(int));
+    while (count != totalNumProcesses)
     {
-        // Recieve message
-        int msgStatus = ReceiveFromPG(&msgBuffer, msqid);
-
-        if (msgStatus == -1)
+        // Keep on extracting from msg queue till its empty
+        // must do that in case multiple processes have the same arrival time
+        while (ReceiveFromPG(&msgBuffer, msqid) != -1)
         {
-            // If readyQueue has processes, keep running algorithm
-            if (!isEmpty(readyQueue))
+            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+
+            int shmid = CreateProcessInfoSHM_ID();
+
+            ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
+
+            *process = unpackedProcess;
+            process->shmid = shmid;
+
+            // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
+
+            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+                   process->pid, getClk(), process->arrivalTime);
+            // negative priority so pri has highest prioity
+            enqueuePri(priReadyQueue, process, -(process->priority));  
+        }
+        // dequeue the sorted process to the actual RR ready queue
+        while (dequeuePri(priReadyQueue, (void **)&temp, pri) != 0) {
+            enqueue(ReadyQueue, temp);
+        }
+
+        // If you're the first process you can run
+        if (currentProcess == NULL)
+        {
+
+            if (!isEmpty(ReadyQueue))
             {
-                runRoundRobin(quantum);
+                currentProcess = (ProcessInfo *)dequeue(ReadyQueue);
+                prevStartTime = getClk();
+                runProcess(currentProcess);
+                currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                currentProcess->startTime = getClk();
+                logProcess(currentProcess,getClk(),STARTED);
+
             }
         }
-        else
+
+        // if process done or quantum ended
+        if (currentProcess != NULL)
         {
-
-            // Unpack to get process info
-            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-            // create process info (dynamic as to avoid rewrite)
-            ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
-            *processCopy = unpackedProcess;
-
-            // enqueue that process
-            enqueue(readyQueue, processCopy);
-
-            // print to check ready queue is correct
-            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-                   processCopy->pid, getClk(), processCopy->arrivalTime);
-
-            if (!isEmpty(readyQueue))
+            // process will run min(quantum, remainingtime)
+            int runningTime;
+            if (quantum < currentProcess->remainingTime) runningTime = quantum;
+            else runningTime = currentProcess->remainingTime;
+            
+            // If process Done
+            if (currentProcess->remainingTime <= 0)
             {
-                runRoundRobin(quantum);
+                // end
+                if(currentProcess->state != FINISHED)
+                {
+                    count++;
+
+                    currentProcess->endTime = getClk();
+                    enqueue(finishQueue, currentProcess);
+                    logProcess(currentProcess,getClk(),FINISHED);
+                }
+
+                if (!isEmpty(ReadyQueue))
+                {
+                    currentProcess = (ProcessInfo *)dequeue(ReadyQueue);
+                    prevStartTime = getClk();
+                    runProcess(currentProcess);
+                    ProcessState state;
+                    if(currentProcess->state == STOPPED)
+                    {
+                        currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
+                        state = RESUMED;
+                    }
+                    else
+                    {
+                        currentProcess->startTime = getClk();
+                        state = STARTED;
+                        currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                    }
+
+
+                    logProcess(currentProcess,getClk(),state);
+                }
             }
+
+            // If Quantum Has ended
+            else if (getClk() >= prevStartTime + quantum) {
+
+                pauseProcess(currentProcess);
+                enqueue(ReadyQueue, currentProcess);
+                currentProcess->lastStopTime = getClk();
+                logProcess(currentProcess,getClk(),STOPPED);
+                if (!isEmpty(ReadyQueue))
+                {
+                    currentProcess = (ProcessInfo *)dequeue(ReadyQueue);
+                    prevStartTime = getClk();
+                    runProcess(currentProcess);
+                    ProcessState state;
+                    if(currentProcess->state == STOPPED)
+                    {
+                        currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
+                        state = RESUMED;
+                    }
+                    else
+                    {
+                        state = STARTED;
+                        currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                        currentProcess->startTime = getClk();
+                    }
+
+
+                    logProcess(currentProcess,getClk(),state);
+
+                }
+            } 
         }
 
     }
-
-    // TODO implement the scheduler :)
-    // ana edetak aho the type of scheduling algo check models hatal2y enum
-    // upon termination release the clock resources.
-
     schedulerPerf(finishQueue);
-
-    // LATER destroyClk(true);
 }
 
 // void runHPF(int msqid)
