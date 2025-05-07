@@ -366,7 +366,7 @@ void clearScheduler(int sig)
 {
 
     destroyClk(false);
-    printf("SCHEDULER CLEARED\n");
+
     if (finishQueue != NULL)
     {
 
