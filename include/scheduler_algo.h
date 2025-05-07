@@ -29,7 +29,7 @@ ProcessInfo* dequeueShortestJob(Queue* q); //used for SRTN
 //Helper Functions
 void runProcess(ProcessInfo* process);
 void pauseProcess(ProcessInfo * process);
-void resumeProcess(ProcessInfo * process);
-void stopProcess(ProcessInfo * process);
+
+
 
 #endif

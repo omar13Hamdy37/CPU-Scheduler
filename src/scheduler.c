@@ -12,25 +12,19 @@
 #include "priQueue.h"
 #include "scheduler_helper.h"
 
+// if done sig is sent and we change that bool
 #define PgSentAllProcesses SIGUSR1
 // bool saying pg is done sending processes
 bool PgDone = false;
-bool first_run = true;
+
 void clearScheduler(int sig);
-// if done sig is sent and we change that bool
+
+// Queues that we will use
 Queue *finishQueue;
 Queue *readyQueue;
 PriQueue *priReadyQueue;
-// Semaphore ID
-int prev_clk = 0;
-int currClk;
-int semid;
 
-union semun
-{
-    int val;
-};
-
+// function to modify PgDone when pg is done
 void handle_Pg_Done(int sig)
 {
     if (sig == PgSentAllProcesses)
@@ -43,6 +37,7 @@ void runSRTN_new(int msqid);
 void runHPF_new(int msqid);
 void runRR_new(int msqid, int quantum);
 
+// num processes
 int totalNumProcesses;
 int msqid; // id of message queue we use to communicate with PG
 
@@ -63,10 +58,6 @@ int main(int argc, char *argv[])
         printf("Error getting msqid\n");
         exit(1);
     }
-
-  
-
-    // For RR
 
     // Print to check algorithm choice correct
     switch (algorithm)
@@ -89,86 +80,54 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-
+    // create perf file
     schedulerPerf(finishQueue);
+    // clear scheduler resources
     clearScheduler(-1);
+    // destroy final queue
     destroyQueue(finishQueue);
-
 }
 
-// Keep these functions
 void runSRTN_new(int msqid)
 {
     int count = 0;
-    // TODO: CHECK THESE INIT ARE OK
-    // initalize clock
 
-    // initalize scheduler to be able to scheduler
+    // initalize to be able to log
     initSchedulerLog();
     // Prepare message buffer
     PGSchedulerMsgBuffer msgBuffer;
     msgBuffer.mtype = 1;
     // queue for ready processes
+
     // pri queue and srt is the priority thing
     priReadyQueue = createPriQueue();
-
     finishQueue = createQueue();
 
-    // TODO: FIX WHILE LOOP CONDITION
-    // 3ayz while pg not done or queue not empty
     ProcessInfo *currentProcess = NULL;
     ProcessInfo *incomingProcess = NULL;
-    int *pri = malloc(sizeof(int));
-    // TODO: EDGECASE BA3AT AND I DIDNT RECEIVE AND LIST EMPTY
+    int *pri = malloc(sizeof(int)); // (not really used)
+
     while (count != totalNumProcesses)
     {
 
-        // // Blocks and waits till it receives a process
-
-        // BlockingReceiveFromPG(&msgBuffer, msqid);
-        // // Unpack to get process info
-        // ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-        // // create process info in shared memory to share with actual process
-        // int shmid = CreateProcessInfoSHM_ID();
-
-        // // attch to scheduler memory
-        // ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
-
-        // // copy info to shared memory
-        // *process = unpackedProcess;
-        // process->shmid = shmid;
-
-        // // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
-
-        // printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-        //        process->pid, getClk(), process->arrivalTime);
-        // // negative remaining time so srt has highest prioity
-        // enqueuePri(priReadyQueue, process, -(process->remainingTime));
-
-        // Keep on extracting from msg queue till its empty
-        // must do that in case multiple processes have the same arrival time
-        // TEST: TO SYNCHRONIZE WITH PROCESS DECREMENT
-        // SO THT ONCE ENTERING THE SCHEDULER WE ARE AT THE BEGINNING OF A NEW TIME STEP
+        // keep on receiving processes from msg q till it's empty
 
         while (ReceiveFromPG(&msgBuffer, msqid) != -1)
         {
+            // unpack from msg q
             ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-
+            // get shmid for this process
             int shmid = CreateProcessInfoSHM_ID();
+            // attach to the scheduler
 
             ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
-
+            // copy proces to shared memory
             *process = unpackedProcess;
+            // put shmid inside process
             process->shmid = shmid;
-
-            //         // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
-
-            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-                   process->pid, getClk(), process->arrivalTime);
             // negative remaining time so srt has highest prioity
             enqueuePri(priReadyQueue, process, -(process->remainingTime));
         }
-        //--------------------------------------------
 
         // If you're the first process you can run
         if (currentProcess == NULL)
@@ -176,10 +135,13 @@ void runSRTN_new(int msqid)
 
             if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
             {
-
+                // deq from ready and run that process
                 runProcess(currentProcess);
+                // it's waiting time is current - arrival
                 currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                // start time is rn
                 currentProcess->startTime = getClk();
+                // log current state
                 logProcess(currentProcess, getClk(), STARTED);
             }
         }
@@ -193,18 +155,20 @@ void runSRTN_new(int msqid)
                 // end
                 if (currentProcess->state != FINISHED)
                 {
+                    // count will increse
                     count++;
-
                     currentProcess->endTime = getClk();
+                    // enqueue to finish queue and log
                     enqueue(finishQueue, currentProcess);
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
-
+                // if there is a proces available run now
                 if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
                 {
-
+                    // run
                     runProcess(currentProcess);
                     ProcessState state;
+                    // if process is stopped then it will be resumed
                     if (currentProcess->state == STOPPED)
                     {
                         currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
@@ -212,11 +176,12 @@ void runSRTN_new(int msqid)
                     }
                     else
                     {
+                        // else it just came to it should be start
                         currentProcess->startTime = getClk();
                         state = STARTED;
                         currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
                     }
-
+                    // log with the correct state
                     logProcess(currentProcess, getClk(), state);
                 }
             }
@@ -228,13 +193,17 @@ void runSRTN_new(int msqid)
 
             if (incomingProcess->remainingTime < currentProcess->remainingTime)
             {
+                // pause current process
                 pauseProcess(currentProcess);
+                // enqueue it in ready
                 enqueuePri(priReadyQueue, currentProcess, -(currentProcess->remainingTime));
+                // update last stop time to use in calc wait time
                 currentProcess->lastStopTime = getClk();
                 logProcess(currentProcess, getClk(), STOPPED);
 
                 if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
                 {
+                    // dequeue next one
                     runProcess(currentProcess);
                     ProcessState state;
                     if (currentProcess->state == STOPPED)
@@ -254,13 +223,11 @@ void runSRTN_new(int msqid)
             }
         }
     }
-    printPointersQueue(finishQueue, printProcessInfoPtr);
 }
 
 void runHPF_new(int msqid)
 {
     int count = 0;
-    // initalize clock
 
     // initalize scheduler to be able to scheduler
     initSchedulerLog();
@@ -270,11 +237,8 @@ void runHPF_new(int msqid)
     // queue for ready processes
     // pri queue and pri is the priority thing
     priReadyQueue = createPriQueue();
-
     finishQueue = createQueue();
 
-    // TODO: FIX WHILE LOOP CONDITION
-    // 3ayz while pg not done or queue not empty
     ProcessInfo *currentProcess = NULL;
     int *pri = malloc(sizeof(int));
     while (count != totalNumProcesses)
@@ -292,10 +256,6 @@ void runHPF_new(int msqid)
             *process = unpackedProcess;
             process->shmid = shmid;
 
-            // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
-
-            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-                   process->pid, getClk(), process->arrivalTime);
             // negative priority so pri has highest prioity
             enqueuePri(priReadyQueue, process, -(process->priority));
         }
@@ -363,7 +323,6 @@ void runRR_new(int msqid, int quantum)
     readyQueue = createQueue();
     finishQueue = createQueue();
 
-    // TODO: FIX WHILE LOOP CONDITION
     // 3ayz while pg not done or queue not empty
     ProcessInfo *currentProcess = NULL;
     ProcessInfo *temp = NULL;
@@ -383,10 +342,6 @@ void runRR_new(int msqid, int quantum)
             *process = unpackedProcess;
             process->shmid = shmid;
 
-            // TODO: REMOVE LATER (FOR NOW CHECK THAT PROCESS COMES AT CORRECT TIME)
-
-            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
-                   process->pid, getClk(), process->arrivalTime);
             // negative priority so pri has highest prioity
             enqueuePri(priReadyQueue, process, -(process->priority));
         }
@@ -414,12 +369,6 @@ void runRR_new(int msqid, int quantum)
         // if process done or quantum ended
         if (currentProcess != NULL)
         {
-            // process will run min(quantum, remainingtime)
-            int runningTime;
-            if (quantum < currentProcess->remainingTime)
-                runningTime = quantum;
-            else
-                runningTime = currentProcess->remainingTime;
 
             // If process Done
             if (currentProcess->remainingTime <= 0)

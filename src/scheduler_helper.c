@@ -25,16 +25,8 @@ void pauseProcess(ProcessInfo *process)
     kill(process->actualPid, SIGSTOP);
 }
 
-void resumeProcess(ProcessInfo *process)
-{
-    kill(process->actualPid, SIGCONT);
-}
 
-void stopProcess(ProcessInfo *process)
-{
-    kill(process->actualPid, SIGKILL);
-    waitpid(process->actualPid, NULL, 0);
-}
+
 int CreateProcessInfoSHM_ID()
 {
     return shmget(IPC_PRIVATE, sizeof(ProcessInfo), IPC_CREAT | 0666);

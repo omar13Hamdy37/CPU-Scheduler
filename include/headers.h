@@ -60,7 +60,7 @@ void destroyClk(bool terminateAll, int num)
 {
 
     shmdt(shmaddr);
-    printf("DETACHED %i\n", num);
+
 
     if (terminateAll)
     {

@@ -19,7 +19,7 @@
 void runProcess(ProcessInfo *process);
 void pauseProcess(ProcessInfo *process);
 void resumeProcess(ProcessInfo *process);
-void stopProcess(ProcessInfo *process);
+
 int CreateProcessInfoSHM_ID();
 int createSemaphore();
 void up(int semid);
