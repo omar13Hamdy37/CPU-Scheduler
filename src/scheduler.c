@@ -446,6 +446,111 @@ void runRR_new(int msqid, int quantum) {
                     logProcess(currentProcess,getClk(),state);
                 }
             }
+        }
+
+
+    }
+    printPointersQueue(finishQueue,printProcessInfoPtr);
+    schedulerPerf(finishQueue);
+
+
+}
+void runHPF_new(int msqid) {
+    int count = 0;
+    // initalize clock
+    initClk();
+    // initalize scheduler to be able to scheduler
+    initSchedulerLog();
+
+    // message buffer and send type to 1
+    PGSchedulerMsgBuffer msgBuffer;
+    msgBuffer.mtype = 1;
+    int algoPid = fork();
+
+    while (getClk() < 50)
+    {
+        // Recieve message
+        int msgStatus = ReceiveFromPG(&msgBuffer, msqid);
+
+        if (msgStatus == -1)
+        {
+            // If readyQueue has processes, keep running algorithm
+            if (!isEmpty(readyQueue))
+            {
+                runRoundRobin(quantum);
+            }
+        }
+        else
+        {
+
+            // Unpack to get process info
+            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+            // create process info (dynamic as to avoid rewrite)
+            ProcessInfo *processCopy = (ProcessInfo *)malloc(sizeof(ProcessInfo));
+            *processCopy = unpackedProcess;
+
+            // enqueue that process
+            enqueue(readyQueue, processCopy);
+
+            // print to check ready queue is correct
+            printf("Process with id %i is ready at timestep %i, arrival time should be %i\n",
+                   processCopy->pid, getClk(), processCopy->arrivalTime);
+
+            if (!isEmpty(readyQueue))
+            {
+                currentProcess = (ProcessInfo *)dequeue(ReadyQueue);
+                prevStartTime = getClk();
+                runProcess(currentProcess);
+                currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                currentProcess->startTime = getClk();
+                logProcess(currentProcess,getClk(),STARTED);
+
+            }
+        }
+
+        // if process done or quantum ended
+        if (currentProcess != NULL)
+        {
+            // process will run min(quantum, remainingtime)
+            int runningTime;
+            if (quantum < currentProcess->remainingTime) runningTime = quantum;
+            else runningTime = currentProcess->remainingTime;
+            
+            // If process Done
+            if (currentProcess->remainingTime <= 0)
+            {
+                // end
+                if(currentProcess->state != FINISHED)
+                {
+                    count++;
+
+                    currentProcess->endTime = getClk();
+                    enqueue(finishQueue, currentProcess);
+                    logProcess(currentProcess,getClk(),FINISHED);
+                }
+
+                if (!isEmpty(ReadyQueue))
+                {
+                    currentProcess = (ProcessInfo *)dequeue(ReadyQueue);
+                    prevStartTime = getClk();
+                    runProcess(currentProcess);
+                    ProcessState state;
+                    if(currentProcess->state == STOPPED)
+                    {
+                        currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
+                        state = RESUMED;
+                    }
+                    else
+                    {
+                        currentProcess->startTime = getClk();
+                        state = STARTED;
+                        currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                    }
+
+
+                    logProcess(currentProcess,getClk(),state);
+                }
+            }
 
             // If Quantum Has ended
             else if (getClk() >= prevStartTime + quantum) {
@@ -480,109 +585,103 @@ void runRR_new(int msqid, int quantum) {
         }
 
     }
-    
+    schedulerPerf(finishQueue);
 }
 
-// Function to clear all shared memory of all processes
-void clearScheduler(int sig)
-{
+// void runHPF(int msqid)
+// {
 
-    destroyClk(false);
+//     initSchedulerLog(); // Initialize the log file
 
-    if (finishQueue != NULL)
-    {
+//     Queue *readyQueue = createQueue(); // Create linked list queue
+//     PGSchedulerMsgBuffer msgBuffer;
 
-        QueueNode *current = finishQueue->front;
+//     int timestep = 0;
+//     float totalCPUTime = 0;
+//     float totalTurnaroundTime = 0;
+//     float totalWaitingTime = 0;
+//     float totalWTA = 0;
+//     int numCompletedProcesses = 0;
+//     float squaredDiffWTA = 0;
 
-        // loop
-        while (current != NULL)
-        {
+//     while (true)
+//     {
+//         // Receive new processes
+//         if (ReceiveFromPG(&msgBuffer, msqid) != -1)
+//         {
+//             ProcessInfo *newProcess = (ProcessInfo *)malloc(sizeof(ProcessInfo));
+//             *newProcess = UnpackMsgBuffer(msgBuffer);
+//             enqueue(readyQueue, newProcess);
+//         }
 
-            ProcessInfo *proc = (ProcessInfo *)current->data;
-            if (proc->shmid != -1)
-            {
-                // get shmid (must get it men hena before dettaching)
-                int shmid = proc->shmid;
-                if (shmdt(proc) == -1)
-                {
-                    perror("Failed to detach shared memory");
-                }
+//         // If there is a ready process
+//         // TODO CHECK THAT READY QUEUE NOT EMPTY AND PG NOT DONE
+//         if (!isEmpty(readyQueue))
+//         {
+//             ProcessInfo *selectedProcess = dequeue_highest_priority(readyQueue);
 
-                // delete shm from kernel
-                if (shmctl(shmid, IPC_RMID, NULL) == -1)
-                {
-                    perror("Failed to remove shared memory");
-                }
-            }
+//             int pid = fork();
+//             if (pid == 0)
+//             {
+//                 // Child process: execute "process"
+//                 char runtimeStr[10];
+//                 sprintf(runtimeStr, "%d", selectedProcess->runTime);
+//                 execl("./process", "process", runtimeStr, (char *)NULL);
+//                 perror("Failed to exec process");
+//                 exit(EXIT_FAILURE);
+//             }
+//             else if (pid > 0)
+//             {
+//                 // Parent process: Scheduler
+//                 selectedProcess->pid = pid;
+//                 selectedProcess->startTime = timestep;
+//                 selectedProcess->state = STARTED;
 
-            current = current->next;
-        }
-    }
-    if (priReadyQueue != NULL)
-    {
+//                 logProcess(selectedProcess, timestep, STARTED);
 
-        PriNode *current = priReadyQueue->head;
+//                 // Simulate running for runTime units
+//                 for (int i = 0; i < selectedProcess->runTime; i++)
+//                 {
+//                     usleep(1000);
+//                     timestep++;
+//                     totalCPUTime++;
+//                 }
 
-        // loop
-        while (current != NULL)
-        {
+//                 // Wait for the child to finish
+//                 waitpid(pid, NULL, 0);
 
-            ProcessInfo *proc = (ProcessInfo *)current->item;
-            if (proc->shmid != -1)
-            {
-                // get shmid (must get it men hena before dettaching)
-                int shmid = proc->shmid;
-                if (shmdt(proc) == -1)
-                {
-                    perror("Failed to detach shared memory");
-                }
+//                 selectedProcess->endTime = timestep;
+//                 selectedProcess->turnaroundTime = selectedProcess->endTime - selectedProcess->arrivalTime;
+//                 selectedProcess->waitingTime = selectedProcess->turnaroundTime - selectedProcess->runTime;
+//                 selectedProcess->weightedTurnaroundTime = (float)selectedProcess->turnaroundTime / selectedProcess->runTime;
+//                 selectedProcess->state = FINISHED;
 
-                // delete shm from kernel
-                if (shmctl(shmid, IPC_RMID, NULL) == -1)
-                {
-                    perror("Failed to remove shared memory");
-                }
-            }
+//                 totalTurnaroundTime += selectedProcess->turnaroundTime;
+//                 totalWaitingTime += selectedProcess->waitingTime;
+//                 totalWTA += selectedProcess->weightedTurnaroundTime;
+//                 squaredDiffWTA += selectedProcess->weightedTurnaroundTime * selectedProcess->weightedTurnaroundTime;
+//                 numCompletedProcesses++;
 
-            current = current->next;
-        }
-    }
-    if (readyQueue != NULL)
-    {
+//                 logProcess(selectedProcess, timestep, FINISHED);
 
-        QueueNode *current = readyQueue->front;
+//                 free(selectedProcess); // Free the memory
+//             }
+//             else
+//             {
+//                 perror("Failed to fork");
+//             }
+//         }
+//         if (isEmpty(readyQueue))
+//         {
+//             break;
+//         }
+//         usleep(1000); // simulate 1ms timestep
+//         timestep++;
+//     }
+//     float avgWTA = totalWTA / numCompletedProcesses;
+//     float avgWaitingTime = totalWaitingTime / numCompletedProcesses;
+//     float stdDevWTA = sqrt(squaredDiffWTA / numCompletedProcesses - avgWTA * avgWTA);
+//     float cpuUtilization = (totalCPUTime / timestep) * 100;
 
-        // loop
-        while (current != NULL)
-        {
-
-            ProcessInfo *proc = (ProcessInfo *)current->data;
-            if (proc->shmid != -1)
-            {
-                // get shmid (must get it men hena before dettaching)
-                int shmid = proc->shmid;
-                if (shmdt(proc) == -1)
-                {
-                    perror("Failed to detach shared memory");
-                }
-
-                // delete shm from kernel
-                if (shmctl(shmid, IPC_RMID, NULL) == -1)
-                {
-                    perror("Failed to remove shared memory");
-                }
-            }
-
-            current = current->next;
-        }
-    }
-    destroyPriQueue(priReadyQueue);
-    destroyQueue(readyQueue);
-    if (sig == SIGINT)
-    {
-        printf("aywa sigint\n");
-        destroyQueue(finishQueue);
-    }
-    
-
-}
+//     destroyQueue(readyQueue); // If you later add termination condition
+// }
