@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     }
 
     // For RR
-    int quantum;
+    int quantum = atoi(argv[3]);
     // Print to check algorithm choice correct
     switch (algorithm)
     {
@@ -63,14 +63,10 @@ int main(int argc, char *argv[])
         break;
     case SRTN:
         printf("Scheduling Algorithm is: Shortest Remaining Time Next (SRTN)\n");
-
         runSRTN_new(msqid);
-
         break;
     case RR:
         printf("Scheduling Algorithm is: Round Robin (RR)\n");
-        printf("Enter quantum value: ");
-        scanf("%d", &quantum);
         runRR_new(msqid, quantum);
         break;
     default:
