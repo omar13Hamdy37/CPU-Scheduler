@@ -25,7 +25,6 @@ int main(int argc, char *argv[])
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
 
     int choice;
-
     do
     {
         printf("Choose a Scheduling Algorithm:\n");
@@ -42,6 +41,13 @@ int main(int argc, char *argv[])
 
     } while (choice < 1 || choice > 3);
 
+    // If chosen algorithm is RR then ask user for quantum
+    int quantum;
+    if (choice == 3) { 
+        printf("Enter quantum value: ");
+        scanf("%d", &quantum);
+    }
+
     // 3. Initiate and create the scheduler and clock processes.
     msqid = createPGSchedulerMsgQueue();
     if (msqid == -1)
@@ -51,6 +57,7 @@ int main(int argc, char *argv[])
     }
     pid_t clk_pid, scheduler_pid;
 
+    
     // First fork: to start the clock process
     clk_pid = fork();
     if (clk_pid == -1)
@@ -65,7 +72,6 @@ int main(int argc, char *argv[])
         perror("Failed to exec clk.out");
         exit(1);
     }
-
     // Second fork: to start the scheduler process
     scheduler_pid = fork();
     if (scheduler_pid == -1)
@@ -75,12 +81,14 @@ int main(int argc, char *argv[])
     }
     else if (scheduler_pid == 0)
     {
-        // Choice and size should be converted to string and passed as an argument
+        // Choice, size and quantum should be converted to string and passed as an argument
         char choice_str[10];
         char count_str[10];
+        char quantum_str[10];
         sprintf(choice_str, "%d", choice);
         sprintf(count_str, "%d", count);
-        execl("./bin/scheduler.out", "scheduler.out", choice_str, count_str, NULL);
+        sprintf(quantum_str, "%d", quantum);
+        execl("./bin/scheduler.out", "scheduler.out", choice_str, count_str, quantum_str, NULL);
         perror("Failed to exec scheduler.out");
     }
     // 4. Use this function after creating the clock process to initialize clock

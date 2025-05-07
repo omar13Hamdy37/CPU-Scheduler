@@ -11,6 +11,7 @@
         "queue.h": "c",
         "scheduler_algo.h": "c",
         "stdlib.h": "c",
-        "priqueue.h": "c"
+        "priqueue.h": "c",
+        "cstdlib": "c"
     }
 }
