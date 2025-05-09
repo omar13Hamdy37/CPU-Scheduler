@@ -23,6 +23,8 @@ typedef struct
     int waitingTime; // useful for stats
     int priority;    // useful for scheduling algorithms
     int lastStopTime; // used to calculate wait time while processing
+    int memsize;     // for memory size
+    int address;     // pointer to start of address space in memory
 
     int remainingTime;          // useful for process itself, scheduler
     int turnaroundTime;         // useful for stats

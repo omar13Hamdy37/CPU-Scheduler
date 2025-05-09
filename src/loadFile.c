@@ -15,8 +15,8 @@ void loadInputFile(char *fileName, Queue *queue)
     // Skip the comment line
     fgets(line, sizeof(line), file);
 
-    int id, arrivalTime, runTime, priority;
-    while (fscanf(file, "%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority) != EOF)
+    int id, arrivalTime, runTime, priority, memsize;
+    while (fscanf(file, "%d\t%d\t%d\t%d\t%d", &id, &arrivalTime, &runTime, &priority, &memsize) != EOF)
     {
         ProcessInfo *process = (ProcessInfo *)malloc(sizeof(ProcessInfo));
         process->pid = id;
@@ -31,6 +31,7 @@ void loadInputFile(char *fileName, Queue *queue)
         process->weightedTurnaroundTime = 0;
         process->state = WAITING;
         process->shmid = -1;
+        process->memsize = memsize;
         enqueue(queue, process);
     }
 

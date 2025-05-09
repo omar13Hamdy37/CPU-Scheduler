@@ -21,7 +21,7 @@ int main(int argc, char * argv[])
     scanf("%d", &no);
     srand(time(null));
     //fprintf(pFile,"%d\n",no);
-    fprintf(pFile, "#id arrival runtime priority\n");
+    fprintf(pFile, "#id arrival runtime priority memory\n");
     pData.arrivaltime = 1;
     for (int i = 1 ; i <= no ; i++)
     {
@@ -31,7 +31,8 @@ int main(int argc, char * argv[])
         pData.arrivaltime += rand() % (11); //processes arrives in order
         pData.runningtime = (rand() % (30)) + 1; // + 1 To avoid running time = 0
         pData.priority = rand() % (11);
-        fprintf(pFile, "%d\t%d\t%d\t%d\n", pData.id, pData.arrivaltime, pData.runningtime, pData.priority);
+        int memsize = rand() % 255 + 1; // for memory
+        fprintf(pFile, "%d\t%d\t%d\t%d\t%d\n", pData.id, pData.arrivaltime, pData.runningtime, pData.priority, memsize);
     }
     fclose(pFile);
 }
