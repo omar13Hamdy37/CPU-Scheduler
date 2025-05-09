@@ -5,7 +5,7 @@ void initMemoryLog()
 {
     FILE *fp = fopen("memory.log", "w");
     if (!fp) {
-        perror("Failed to initialize scheduler.log");
+        perror("Failed to initialize memory.log");
         return;
     }
 
@@ -17,7 +17,7 @@ void processMemoryLog(ProcessInfo* process, int timestep, int action, int size) 
 { 
     FILE *fp = fopen("memory.log", "a");
     if (!fp) {
-        perror("Failed to initialize scheduler.log");
+        perror("Failed to log in memory.log");
         return;
     }
 
