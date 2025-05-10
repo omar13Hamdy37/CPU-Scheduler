@@ -30,6 +30,8 @@ typedef struct
     int turnaroundTime;         // useful for stats
     int weightedTurnaroundTime; // useful for stats
     int shmid;
+    int schedulerPid;
+    int semid;
     ProcessState state; // useful for tracking process state
 } ProcessInfo;
 

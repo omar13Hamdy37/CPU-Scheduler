@@ -95,6 +95,8 @@ int main(int argc, char *argv[])
     initClk();
     int timestep;
 
+
+ 
     // while there are still processes to arrive
     while (!isEmpty(processQueue))
     {
@@ -107,6 +109,7 @@ int main(int argc, char *argv[])
         {
             // send to scheduler
             SendToScheduler(*process, msqid);
+
         }
     }
     // tell scheduler u sent all processes (useful for deciding when algo is done)

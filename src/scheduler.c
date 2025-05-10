@@ -13,13 +13,32 @@
 #include "scheduler_helper.h"
 #include "buddySystem_UT.h"
 #include "memoryLog.h"
-
+#include <signal.h>
+#include <asm-generic/signal-defs.h>
 // if done sig is sent and we change that bool
 #define PgSentAllProcesses SIGUSR1
 // bool saying pg is done sending processes
 bool PgDone = false;
+void receiveMQ();
+void importToReadyQueue();
+int *pri;
+ProcessInfo *temp;
+ProcessInfo *currentProcess = NULL;
+ProcessInfo *incomingProcess = NULL;
+enum scheduling_type algorithm;
+
+// bool processSignal = false;
+// void handle_process_signal(int sig)
+// {
+//     if (sig == SIGUSR2)
+//     {
+//         processSignal = true;
+
+//     }
+// }
 
 void clearScheduler(int sig);
+// Prepare message buffer
 
 // Queues that we will use
 Queue *finishQueue;
@@ -29,7 +48,9 @@ Queue *tempQ;
 PriQueue *priReadyQueue;
 
 // Memory root
-MemoryTreeNode* memoryTreeRoot;
+MemoryTreeNode *memoryTreeRoot;
+// prepare msgBuffer
+PGSchedulerMsgBuffer msgBuffer;
 
 // function to modify PgDone when pg is done
 void handle_Pg_Done(int sig)
@@ -45,20 +66,21 @@ void runHPF_new(int msqid);
 void runRR_new(int msqid, int quantum);
 
 // deallocate process from memory
-void deallocateProcessMemory(ProcessInfo* process);
+void deallocateProcessMemory(ProcessInfo *process);
 // num processes
 int totalNumProcesses;
 int msqid; // id of message queue we use to communicate with PG
 
 int main(int argc, char *argv[])
 {
+    // signal(SIGUSR2, handle_process_signal);
     signal(SIGINT, clearScheduler);
 
     signal(PgSentAllProcesses, handle_Pg_Done);
     // initalize clock
     initClk();
     // get scheduling type from arguments ( we convert argument to int as it was string then to enum)
-    enum scheduling_type algorithm = (enum scheduling_type)atoi(argv[1]);
+    algorithm = (enum scheduling_type)atoi(argv[1]);
     totalNumProcesses = atoi(argv[2]);
     // Get msqid
     msqid = createPGSchedulerMsgQueue();
@@ -103,13 +125,12 @@ int main(int argc, char *argv[])
 void runSRTN_new(int msqid)
 {
     int count = 0;
+    msgBuffer.mtype = 1;
 
     // initalize to be able to log
     initSchedulerLog();
     initMemoryLog();
-    // Prepare message buffer
-    PGSchedulerMsgBuffer msgBuffer;
-    msgBuffer.mtype = 1;
+
     // queue for ready processes
 
     // pri queue and srt is the priority thing
@@ -118,24 +139,27 @@ void runSRTN_new(int msqid)
     waitingQ = createQueue();
     tempQ = createQueue();
 
-    ProcessInfo *currentProcess = NULL;
-    ProcessInfo *incomingProcess = NULL;
-    int *pri = malloc(sizeof(int)); // (not really used)
+    currentProcess = NULL;
+    incomingProcess = NULL;
+    pri = malloc(sizeof(int)); // (not really used)
 
     while (count != totalNumProcesses)
     {
 
         // try to allocate memory for all processes in waitingQ
-        while (!isEmpty(waitingQ)) {
+        while (!isEmpty(waitingQ))
+        {
             ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
             int size = getNearestPowerOfTwo(process->memsize);
-            MemoryTreeNode* currentBestFit = getBestFit(memoryTreeRoot, size);
+            MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
 
             // if we couldnt find best fit return process to waitingqueue
-            if (currentBestFit == NULL) {
+            if (currentBestFit == NULL)
+            {
                 enqueue(tempQ, process);
             }
-            else {
+            else
+            {
                 // get address (start byte) of process memory
                 int address = allocateMemory(currentBestFit, process->memsize);
                 process->address = address;
@@ -150,40 +174,9 @@ void runSRTN_new(int msqid)
             ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
             enqueue(waitingQ, process);
         }
+
         // keep on receiving processes from msg q till it's empty
-
-        while (ReceiveFromPG(&msgBuffer, msqid) != -1)
-        {
-            // unpack from msg q
-            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-            // get shmid for this process
-            int shmid = CreateProcessInfoSHM_ID();
-            // attach to the scheduler
-
-            ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
-            // copy proces to shared memory
-            *process = unpackedProcess;
-            // put shmid inside process
-            process->shmid = shmid;
-
-            // try to allocate memory to process
-            int size = getNearestPowerOfTwo(process->memsize);
-            // get best fit for process in the current memory tree
-            MemoryTreeNode* currentBestFit = getBestFit(memoryTreeRoot, size);
-            // if we couldn't allocate memory for process enqueue it to waiting Q
-            if (currentBestFit == NULL) {
-                enqueue(waitingQ, process);
-            }
-            else
-            {
-                // get address of allocated process
-                int address = allocateMemory(currentBestFit, process->memsize);
-                process->address = address;
-                // negative remaining time so srt has highest prioity
-                enqueuePri(priReadyQueue, process, -(process->remainingTime));
-                processMemoryLog(process, getClk(), 1, size);
-            }
-        }
+        receiveMQ();
 
         // If you're the first process you can run
         if (currentProcess == NULL)
@@ -201,11 +194,11 @@ void runSRTN_new(int msqid)
                 logProcess(currentProcess, getClk(), STARTED);
             }
         }
-
-        // if process done
-        if (currentProcess != NULL)
+        else
         {
+            // If you're not the first process
 
+            // Check if your time is done
             if (currentProcess->remainingTime <= 0)
             {
                 // end
@@ -220,6 +213,9 @@ void runSRTN_new(int msqid)
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
                 // if there is a proces available run now
+                // first check if another process arrived
+                receiveMQ();
+
                 if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
                 {
                     // run
@@ -242,40 +238,47 @@ void runSRTN_new(int msqid)
                     logProcess(currentProcess, getClk(), state);
                 }
             }
-        }
-        // if you are an incoming process and less rt you can run
-
-        if (peekPri(priReadyQueue, (void **)&incomingProcess, pri) != 0)
-        {
-
-            if (incomingProcess->remainingTime < currentProcess->remainingTime)
+            else
             {
-                // pause current process
-                pauseProcess(currentProcess);
-                // enqueue it in ready
-                enqueuePri(priReadyQueue, currentProcess, -(currentProcess->remainingTime));
-                // update last stop time to use in calc wait time
-                currentProcess->lastStopTime = getClk();
-                logProcess(currentProcess, getClk(), STOPPED);
+                // if you're not the first process
+                // and you're not done yet
+                // wait for process to decrement and check if another process has shorter rtn
 
-                if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+                down(currentProcess->semid);
+                receiveMQ();
+                if (peekPri(priReadyQueue, (void **)&incomingProcess, pri) != 0)
                 {
-                    // dequeue next one
-                    runProcess(currentProcess);
-                    ProcessState state;
-                    if (currentProcess->state == STOPPED)
-                    {
-                        currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
-                        state = RESUMED;
-                    }
-                    else
-                    {
-                        state = STARTED;
-                        currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
-                        currentProcess->startTime = getClk();
-                    }
 
-                    logProcess(currentProcess, getClk(), state);
+                    if (incomingProcess->remainingTime < currentProcess->remainingTime)
+                    {
+                        // pause current process
+                        pauseProcess(currentProcess);
+                        // enqueue it in ready
+                        enqueuePri(priReadyQueue, currentProcess, -(currentProcess->remainingTime));
+                        // update last stop time to use in calc wait time
+                        currentProcess->lastStopTime = getClk();
+                        logProcess(currentProcess, getClk(), STOPPED);
+
+                        if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
+                        {
+                            // dequeue next one
+                            runProcess(currentProcess);
+                            ProcessState state;
+                            if (currentProcess->state == STOPPED)
+                            {
+                                currentProcess->waitingTime += getClk() - currentProcess->lastStopTime;
+                                state = RESUMED;
+                            }
+                            else
+                            {
+                                state = STARTED;
+                                currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
+                                currentProcess->startTime = getClk();
+                            }
+
+                            logProcess(currentProcess, getClk(), state);
+                        }
+                    }
                 }
             }
         }
@@ -284,13 +287,13 @@ void runSRTN_new(int msqid)
 
 void runHPF_new(int msqid)
 {
+
     int count = 0;
 
     // initalize scheduler to be able to scheduler
     initSchedulerLog();
     initMemoryLog();
     // Prepare message buffer
-    PGSchedulerMsgBuffer msgBuffer;
     msgBuffer.mtype = 1;
     // queue for ready processes
     // pri queue and pri is the priority thing
@@ -299,21 +302,24 @@ void runHPF_new(int msqid)
     waitingQ = createQueue();
     tempQ = createQueue();
 
-    ProcessInfo *currentProcess = NULL;
+    currentProcess = NULL;
     int *pri = malloc(sizeof(int));
     while (count != totalNumProcesses)
     {
         // try to allocate memory for all processes in waitingQ
-        while (!isEmpty(waitingQ)) {
+        while (!isEmpty(waitingQ))
+        {
             ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
             int size = getNearestPowerOfTwo(process->memsize);
-            MemoryTreeNode* currentBestFit = getBestFit(memoryTreeRoot, size);
+            MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
 
             // if we couldnt find best fit return process to waitingQ
-            if (currentBestFit == NULL) {
+            if (currentBestFit == NULL)
+            {
                 enqueue(tempQ, process);
             }
-            else {
+            else
+            {
                 // get address (start byte) of process memory
                 int address = allocateMemory(currentBestFit, process->memsize);
                 process->address = address;
@@ -330,36 +336,8 @@ void runHPF_new(int msqid)
         }
         // Keep on extracting from msg queue till its empty
         // must do that in case multiple processes have the same arrival time
-        while (ReceiveFromPG(&msgBuffer, msqid) != -1)
-        {
-            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
 
-            int shmid = CreateProcessInfoSHM_ID();
-
-            ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
-
-            *process = unpackedProcess;
-            process->shmid = shmid;
-
-            // try to allocate memory to process
-            int size = getNearestPowerOfTwo(process->memsize);
-            // get best fit for process in the current memory tree
-            MemoryTreeNode* currentBestFit = getBestFit(memoryTreeRoot, size);
-            // if we couldn't allocate memory for process enqueue it to waiting Q
-            if (currentBestFit == NULL) {
-                enqueue(waitingQ, process);
-            }
-            else
-            {
-                // get address of allocated process
-                int address = allocateMemory(currentBestFit, process->memsize);
-                process->address = address;
-                // negative priority so pri has highest prioity
-                enqueuePri(priReadyQueue, process, -(process->priority));
-                processMemoryLog(process, getClk(), 1, size);
-            }
-
-        }
+        receiveMQ();
 
         // If you're the first process you can run
         if (currentProcess == NULL)
@@ -367,17 +345,16 @@ void runHPF_new(int msqid)
 
             if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
             {
-
                 runProcess(currentProcess);
                 currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
                 currentProcess->startTime = getClk();
                 logProcess(currentProcess, getClk(), STARTED);
             }
         }
-
-        // if process done
-        if (currentProcess != NULL)
+        else
         {
+            // not the first processes
+            // and you're done
 
             if (currentProcess->remainingTime <= 0)
             {
@@ -391,6 +368,8 @@ void runHPF_new(int msqid)
                     enqueue(finishQueue, currentProcess);
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
+                // so that you are updated
+                receiveMQ();
 
                 if (dequeuePri(priReadyQueue, (void **)&currentProcess, pri) != 0)
                 {
@@ -405,6 +384,7 @@ void runHPF_new(int msqid)
         }
     }
 }
+
 void runRR_new(int msqid, int quantum)
 {
     int count = 0;
@@ -414,11 +394,12 @@ void runRR_new(int msqid, int quantum)
     initSchedulerLog();
     initMemoryLog();
     // Prepare message buffer
-    PGSchedulerMsgBuffer msgBuffer;
+    msgBuffer;
     msgBuffer.mtype = 1;
 
     // Time at which current process started its runningTime
     int prevStartTime;
+    int prevRemainingTime;
     // queue for ready processes
     // pri queue and pri is the priority thing (used for sorting processes with same arrival time by their priority)
     priReadyQueue = createPriQueue();
@@ -429,22 +410,25 @@ void runRR_new(int msqid, int quantum)
     tempQ = createQueue();
 
     // 3ayz while pg not done or queue not empty
-    ProcessInfo *currentProcess = NULL;
-    ProcessInfo *temp = NULL;
-    int *pri = malloc(sizeof(int));
+    currentProcess = NULL;
+    temp = NULL;
+    pri = malloc(sizeof(int));
     while (count != totalNumProcesses)
     {
         // try to allocate memory for all processes in waitingQ
-        while (!isEmpty(waitingQ)) {
+        while (!isEmpty(waitingQ))
+        {
             ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
             int size = getNearestPowerOfTwo(process->memsize);
-            MemoryTreeNode* currentBestFit = getBestFit(memoryTreeRoot, size);
+            MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
 
             // if we couldnt find best fit return process to waitingQ
-            if (currentBestFit == NULL) {
+            if (currentBestFit == NULL)
+            {
                 enqueue(tempQ, process);
             }
-            else {
+            else
+            {
                 // get address (start byte) of process memory
                 int address = allocateMemory(currentBestFit, process->memsize);
                 process->address = address;
@@ -461,40 +445,9 @@ void runRR_new(int msqid, int quantum)
         }
         // Keep on extracting from msg queue till its empty
         // must do that in case multiple processes have the same arrival time
-        while (ReceiveFromPG(&msgBuffer, msqid) != -1)
-        {
-            ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
-
-            int shmid = CreateProcessInfoSHM_ID();
-
-            ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
-
-            *process = unpackedProcess;
-            process->shmid = shmid;
-
-            // try to allocate memory to process
-            int size = getNearestPowerOfTwo(process->memsize);
-            // get best fit for process in the current memory tree
-            MemoryTreeNode* currentBestFit = getBestFit(memoryTreeRoot, size);
-            // if we couldn't allocate memory for process enqueue it to waiting Q
-            if (currentBestFit == NULL) {
-                enqueue(waitingQ, process);
-            }
-            else
-            {
-                // get address of allocated process
-                int address = allocateMemory(currentBestFit, process->memsize);
-                process->address = address;
-                // negative priority so pri has highest prioity
-                enqueuePri(priReadyQueue, process, -(process->priority));
-                processMemoryLog(process, getClk(), 1, size);
-            }
-        }
+        receiveMQ();
         // dequeue the sorted process to the actual RR ready queue
-        while (dequeuePri(priReadyQueue, (void **)&temp, pri) != 0)
-        {
-            enqueue(readyQueue, temp);
-        }
+        importToReadyQueue();
 
         // If you're the first process you can run
         if (currentProcess == NULL)
@@ -502,18 +455,20 @@ void runRR_new(int msqid, int quantum)
 
             if (!isEmpty(readyQueue))
             {
+
                 currentProcess = (ProcessInfo *)dequeue(readyQueue);
                 prevStartTime = getClk();
+                prevRemainingTime = currentProcess->runTime;
                 runProcess(currentProcess);
                 currentProcess->waitingTime += getClk() - currentProcess->arrivalTime;
                 currentProcess->startTime = getClk();
                 logProcess(currentProcess, getClk(), STARTED);
             }
         }
-
-        // if process done or quantum ended
-        if (currentProcess != NULL)
+        else
         {
+
+            // if you're not the first process
 
             // If process Done
             if (currentProcess->remainingTime <= 0)
@@ -528,11 +483,15 @@ void runRR_new(int msqid, int quantum)
                     enqueue(finishQueue, currentProcess);
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
+                receiveMQ();
+                // dequeue the sorted process to the actual RR ready queue
+                importToReadyQueue();
 
                 if (!isEmpty(readyQueue))
                 {
                     currentProcess = (ProcessInfo *)dequeue(readyQueue);
                     prevStartTime = getClk();
+                    prevRemainingTime = currentProcess->remainingTime;
                     runProcess(currentProcess);
                     ProcessState state;
                     if (currentProcess->state == STOPPED)
@@ -552,17 +511,24 @@ void runRR_new(int msqid, int quantum)
             }
 
             // If Quantum Has ended
-            else if ((getClk() >= prevStartTime + quantum) && !(currentProcess->remainingTime == 0))
+
+            else if ((currentProcess->remainingTime <= prevRemainingTime - quantum) && !(currentProcess->remainingTime == 0))
             {
 
                 pauseProcess(currentProcess);
+                receiveMQ();
+                // dequeue the sorted process to the actual RR ready queue
+                importToReadyQueue();
                 enqueue(readyQueue, currentProcess);
                 currentProcess->lastStopTime = getClk();
                 logProcess(currentProcess, getClk(), STOPPED);
+
                 if (!isEmpty(readyQueue))
                 {
+
                     currentProcess = (ProcessInfo *)dequeue(readyQueue);
                     prevStartTime = getClk();
+                    prevRemainingTime = currentProcess->remainingTime;
                     runProcess(currentProcess);
                     ProcessState state;
                     if (currentProcess->state == STOPPED)
@@ -614,6 +580,7 @@ void clearScheduler(int sig)
                     perror("Failed to remove shared memory");
                 }
             }
+            removeSemaphore(proc->shmid);
 
             current = current->next;
         }
@@ -686,9 +653,76 @@ void clearScheduler(int sig)
     }
 }
 
-void deallocateProcessMemory(ProcessInfo* process) {
+void deallocateProcessMemory(ProcessInfo *process)
+{
     int size = getNearestPowerOfTwo(process->memsize);
     deallocateMemory(memoryTreeRoot, process->address, size);
     recursiveMerge(memoryTreeRoot);
     processMemoryLog(process, getClk(), 0, size);
+}
+
+void receiveMQ()
+{
+    while (ReceiveFromPG(&msgBuffer, msqid) != -1)
+    {
+
+        // unpack from msg q
+        ProcessInfo unpackedProcess = UnpackMsgBuffer(msgBuffer);
+        // get shmid for this process
+        int shmid = CreateProcessInfoSHM_ID();
+        int semid = initSemaphore(unpackedProcess.pid);
+        // attach to the scheduler
+
+        ProcessInfo *process = (ProcessInfo *)shmat(shmid, NULL, 0);
+
+        // copy proces to shared memory
+        *process = unpackedProcess;
+        // put shmid inside process
+        process->shmid = shmid;
+        process->semid = semid;
+
+        printf("Process %i received at time %i, should be %i\n", process->pid, getClk(), process->arrivalTime);
+
+        // try to allocate memory to process
+        int size = getNearestPowerOfTwo(process->memsize);
+        // get best fit for process in the current memory tree
+        MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
+        // if we couldn't allocate memory for process enqueue it to waiting Q
+        if (currentBestFit == NULL)
+        {
+            enqueue(waitingQ, process);
+        }
+        else
+        {
+            // get address of allocated process
+            int address = allocateMemory(currentBestFit, process->memsize);
+            process->address = address;
+            // negative remaining time so srt has highest prioity
+            switch (algorithm)
+            {
+            case HPF:
+                enqueuePri(priReadyQueue, process, -(process->priority));
+
+                break;
+            case SRTN:
+                enqueuePri(priReadyQueue, process, -(process->remainingTime));
+                break;
+            case RR:
+                enqueuePri(priReadyQueue, process, -(process->priority));
+
+                break;
+            }
+
+            processMemoryLog(process, getClk(), 1, size);
+        }
+    }
+}
+void importToReadyQueue()
+{
+
+    while (dequeuePri(priReadyQueue, (void **)&temp, pri) != 0)
+    {
+        printf("hena 2\n");
+        enqueue(readyQueue, temp);
+    }
 }

@@ -31,6 +31,10 @@ int main(int agrc, char *argv[])
         {
 
             (shm_ptr->remainingTime)--;
+            up(shm_ptr->semid);
+        
+           // kill(shm_ptr->schedulerPid, SIGUSR2);
+
 
             prevClk = currClk;
         }

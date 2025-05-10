@@ -66,7 +66,7 @@ void calcStatistics(Queue* finishedQueue, int* CPU, float* AvgWTA, float* AvgWai
     }
 
     // Calculate CPU utilization
-    float Utilization = (float)totalRunTime / totalTime;
+    float Utilization = (float)totalRunTime / (totalTime -1);
     *CPU = (int)(100 * Utilization);
 
     // Calculate averages

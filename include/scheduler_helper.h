@@ -13,7 +13,6 @@
 #include <queue.h>
 #include <sys/shm.h>
 
-
 #include <sys/sem.h>
 
 void runProcess(ProcessInfo *process);
@@ -21,7 +20,10 @@ void pauseProcess(ProcessInfo *process);
 void resumeProcess(ProcessInfo *process);
 
 int CreateProcessInfoSHM_ID();
-int createSemaphore();
+int initSemaphore(int pid);
+void down(int semid);
 void up(int semid);
+void removeSemaphore(int semid);
+
 
 #endif
