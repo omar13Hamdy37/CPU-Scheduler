@@ -21,6 +21,8 @@
 bool PgDone = false;
 void receiveMQ();
 void importToReadyQueue();
+void allocateMemToProcess();
+void allocateMemToWaitingProcesses();
 int *pri;
 ProcessInfo *temp;
 ProcessInfo *currentProcess = NULL;
@@ -147,33 +149,7 @@ void runSRTN_new(int msqid)
     {
 
         // try to allocate memory for all processes in waitingQ
-        while (!isEmpty(waitingQ))
-        {
-            ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
-            int size = getNearestPowerOfTwo(process->memsize);
-            MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
-
-            // if we couldnt find best fit return process to waitingqueue
-            if (currentBestFit == NULL)
-            {
-                enqueue(tempQ, process);
-            }
-            else
-            {
-                // get address (start byte) of process memory
-                int address = allocateMemory(currentBestFit, process->memsize);
-                process->address = address;
-                // enqueue to priorityQ
-                enqueuePri(priReadyQueue, process, -(process->remainingTime));
-                processMemoryLog(process, getClk(), 1, size);
-            }
-        }
-        // return processes from temp to waitingQ
-        while (!isEmpty(tempQ))
-        {
-            ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
-            enqueue(waitingQ, process);
-        }
+        allocateMemToWaitingProcesses();
 
         // keep on receiving processes from msg q till it's empty
         receiveMQ();
@@ -213,6 +189,8 @@ void runSRTN_new(int msqid)
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
                 // if there is a proces available run now
+                // check if I can allocate memory to waiting processes
+                allocateMemToWaitingProcesses();
                 // first check if another process arrived
                 receiveMQ();
 
@@ -307,33 +285,7 @@ void runHPF_new(int msqid)
     while (count != totalNumProcesses)
     {
         // try to allocate memory for all processes in waitingQ
-        while (!isEmpty(waitingQ))
-        {
-            ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
-            int size = getNearestPowerOfTwo(process->memsize);
-            MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
-
-            // if we couldnt find best fit return process to waitingQ
-            if (currentBestFit == NULL)
-            {
-                enqueue(tempQ, process);
-            }
-            else
-            {
-                // get address (start byte) of process memory
-                int address = allocateMemory(currentBestFit, process->memsize);
-                process->address = address;
-                // enqueue to priorityQ
-                enqueuePri(priReadyQueue, process, -(process->priority));
-                processMemoryLog(process, getClk(), 1, size);
-            }
-        }
-        // return processes from tempQ to waitingQ
-        while (!isEmpty(tempQ))
-        {
-            ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
-            enqueue(waitingQ, process);
-        }
+        allocateMemToWaitingProcesses();
         // Keep on extracting from msg queue till its empty
         // must do that in case multiple processes have the same arrival time
 
@@ -368,6 +320,8 @@ void runHPF_new(int msqid)
                     enqueue(finishQueue, currentProcess);
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
+                // allocate memory for waiting processes
+                allocateMemToWaitingProcesses();
                 // so that you are updated
                 receiveMQ();
 
@@ -416,33 +370,7 @@ void runRR_new(int msqid, int quantum)
     while (count != totalNumProcesses)
     {
         // try to allocate memory for all processes in waitingQ
-        while (!isEmpty(waitingQ))
-        {
-            ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
-            int size = getNearestPowerOfTwo(process->memsize);
-            MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
-
-            // if we couldnt find best fit return process to waitingQ
-            if (currentBestFit == NULL)
-            {
-                enqueue(tempQ, process);
-            }
-            else
-            {
-                // get address (start byte) of process memory
-                int address = allocateMemory(currentBestFit, process->memsize);
-                process->address = address;
-                // enqueue to priorityQ
-                enqueuePri(priReadyQueue, process, -(process->priority));
-                processMemoryLog(process, getClk(), 1, size);
-            }
-        }
-        // return processes from tempQ to waitingQ
-        while (!isEmpty(tempQ))
-        {
-            ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
-            enqueue(waitingQ, process);
-        }
+        allocateMemToWaitingProcesses();
         // Keep on extracting from msg queue till its empty
         // must do that in case multiple processes have the same arrival time
         receiveMQ();
@@ -483,6 +411,7 @@ void runRR_new(int msqid, int quantum)
                     enqueue(finishQueue, currentProcess);
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
+                allocateMemToWaitingProcesses();
                 receiveMQ();
                 // dequeue the sorted process to the actual RR ready queue
                 importToReadyQueue();
@@ -684,22 +613,36 @@ void receiveMQ()
         printf("Process %i received at time %i, should be %i\n", process->pid, getClk(), process->arrivalTime);
 
         // try to allocate memory to process
-        int size = getNearestPowerOfTwo(process->memsize);
-        // get best fit for process in the current memory tree
-        MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
-        // if we couldn't allocate memory for process enqueue it to waiting Q
-        if (currentBestFit == NULL)
+        allocateMemToProcess(process);
+    }
+}
+void importToReadyQueue()
+{
+
+    while (dequeuePri(priReadyQueue, (void **)&temp, pri) != 0)
+    {
+        printf("hena 2\n");
+        enqueue(readyQueue, temp);
+    }
+}
+
+void allocateMemToProcess(ProcessInfo* process) {
+    int size = getNearestPowerOfTwo(process->memsize);
+    // get best fit for process in the current memory tree
+    MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
+    // if we couldn't allocate memory for process enqueue it to waiting Q
+    if (currentBestFit == NULL)
+    {
+        enqueue(waitingQ, process);
+    }
+    else
+    {
+        // get address of allocated process
+        int address = allocateMemory(currentBestFit, process->memsize);
+        process->address = address;
+        // negative remaining time so srt has highest prioity
+        switch (algorithm)
         {
-            enqueue(waitingQ, process);
-        }
-        else
-        {
-            // get address of allocated process
-            int address = allocateMemory(currentBestFit, process->memsize);
-            process->address = address;
-            // negative remaining time so srt has highest prioity
-            switch (algorithm)
-            {
             case HPF:
                 enqueuePri(priReadyQueue, process, -(process->priority));
 
@@ -711,18 +654,48 @@ void receiveMQ()
                 enqueuePri(priReadyQueue, process, -(process->priority));
 
                 break;
-            }
+        }
 
+        processMemoryLog(process, getClk(), 1, size);
+    }
+}
+
+void allocateMemToWaitingProcesses() {
+    while (!isEmpty(waitingQ))
+    {
+        ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
+        int size = getNearestPowerOfTwo(process->memsize);
+        MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
+
+        // if we couldnt find best fit return process to waitingqueue
+        if (currentBestFit == NULL)
+        {
+            enqueue(tempQ, process);
+        }
+        else
+        {
+            // get address (start byte) of process memory
+            int address = allocateMemory(currentBestFit, process->memsize);
+            process->address = address;
+            // enqueue to priorityQ
+            switch (algorithm) {
+                case HPF:
+                    enqueuePri(priReadyQueue, process, -(process->priority));
+                    break;
+                case SRTN:
+                    enqueuePri(priReadyQueue, process, -(process->remainingTime));
+                    break;
+                case RR:
+                    enqueuePri(priReadyQueue, process, -(process->priority));
+                    break;
+            }
             processMemoryLog(process, getClk(), 1, size);
         }
     }
-}
-void importToReadyQueue()
-{
-
-    while (dequeuePri(priReadyQueue, (void **)&temp, pri) != 0)
+    // return processes from temp to waitingQ
+    while (!isEmpty(tempQ))
     {
-        printf("hena 2\n");
-        enqueue(readyQueue, temp);
+        ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
+        enqueue(waitingQ, process);
     }
 }
