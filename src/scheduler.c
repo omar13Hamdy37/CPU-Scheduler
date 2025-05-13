@@ -416,6 +416,7 @@ void runRR_new(int msqid, int quantum)
                     logProcess(currentProcess, getClk(), FINISHED);
                 }
                 allocateMemToWaitingProcesses();
+                
                 receiveMQ();
                 // dequeue the sorted process to the actual RR ready queue
                 importToReadyQueue();
@@ -449,10 +450,12 @@ void runRR_new(int msqid, int quantum)
             {
 
                 pauseProcess(currentProcess);
+
                 receiveMQ();
                 // dequeue the sorted process to the actual RR ready queue
                 importToReadyQueue();
                 enqueue(readyQueue, currentProcess);
+                printf("Enqueued process %i, at time %i\n", currentProcess->pid, getClk());
                 currentProcess->lastStopTime = getClk();
                 logProcess(currentProcess, getClk(), STOPPED);
 
@@ -653,6 +656,7 @@ void importToReadyQueue()
     {
 
         enqueue(readyQueue, temp);
+        printf("Enqueued process %i, at time %i\n", temp->pid, getClk());
     }
 }
 
@@ -743,17 +747,17 @@ void allocateMemToWaitingProcesses()
     while (!isEmpty(tempQ))
     {
         ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
-         switch (algorithm)
-            {
-            case HPF:
-                enqueuePri(waitingQ, process, -(process->priority));
-                break;
-            case SRTN:
-                enqueuePri(waitingQ, process, -(process->remainingTime));
-                break;
-            case RR:
-                enqueuePri(waitingQ, process, -(process->priority));
-                break;
-            }
+        switch (algorithm)
+        {
+        case HPF:
+            enqueuePri(waitingQ, process, -(process->priority));
+            break;
+        case SRTN:
+            enqueuePri(waitingQ, process, -(process->remainingTime));
+            break;
+        case RR:
+            enqueuePri(waitingQ, process, -(process->priority));
+            break;
+        }
     }
 }
