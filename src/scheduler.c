@@ -31,12 +31,13 @@ ProcessInfo *incomingProcess = NULL;
 enum scheduling_type algorithm;
 
 void clearScheduler(int sig);
+int *AllocPri;
 // Prepare message buffer
 
 // Queues that we will use
 Queue *finishQueue;
 Queue *readyQueue;
-Queue *waitingQ; // for processes that we couldn't allocate memory for
+PriQueue *waitingQ; // for processes that we couldn't allocate memory for
 Queue *tempQ;
 PriQueue *priReadyQueue;
 PriQueue *memoryAllocQueue;
@@ -78,6 +79,7 @@ int main(int argc, char *argv[])
     // get scheduling type from arguments ( we convert argument to int as it was string then to enum)
     algorithm = (enum scheduling_type)atoi(argv[1]);
     totalNumProcesses = atoi(argv[2]);
+    AllocPri = malloc(sizeof(int));
     // Get msqid
     msqid = createPGSchedulerMsgQueue();
     if (msqid == -1)
@@ -132,11 +134,10 @@ void runSRTN_new(int msqid)
     // pri queue and srt is the priority thing
     priReadyQueue = createPriQueue();
     finishQueue = createQueue();
-    waitingQ = createQueue();
+    waitingQ = createPriQueue();
     tempQ = createQueue();
     memoryAllocQueue = createPriQueue();
     allocP = NULL;
-
 
     currentProcess = NULL;
     incomingProcess = NULL;
@@ -274,7 +275,7 @@ void runHPF_new(int msqid)
     // pri queue and pri is the priority thing
     priReadyQueue = createPriQueue();
     finishQueue = createQueue();
-    waitingQ = createQueue();
+    waitingQ = createPriQueue();
     tempQ = createQueue();
     memoryAllocQueue = createPriQueue();
     allocP = NULL;
@@ -360,7 +361,7 @@ void runRR_new(int msqid, int quantum)
     // Actual readyQueue for RR
     readyQueue = createQueue();
     finishQueue = createQueue();
-    waitingQ = createQueue();
+    waitingQ = createPriQueue();
     tempQ = createQueue();
 
     // 3ayz while pg not done or queue not empty
@@ -636,7 +637,6 @@ void receiveMQ()
         // try to allocate memory to process
     }
     // now actually alloc the procdequeuePri(priReadyQueue, (void **)&currentProcess, pripriesses
-    int *AllocPri = malloc(sizeof(int));
 
     while (!isEmptyPri(memoryAllocQueue))
     {
@@ -664,7 +664,20 @@ void allocateMemToProcess(ProcessInfo *process)
     // if we couldn't allocate memory for process enqueue it to waiting Q
     if (currentBestFit == NULL)
     {
-        enqueue(waitingQ, process);
+        switch (algorithm)
+        {
+        case HPF:
+            enqueuePri(waitingQ, process, -(process->priority));
+
+            break;
+        case SRTN:
+            enqueuePri(waitingQ, process, -(process->remainingTime));
+            break;
+        case RR:
+            enqueuePri(waitingQ, process, -(process->priority));
+
+            break;
+        }
     }
     else
     {
@@ -693,42 +706,54 @@ void allocateMemToProcess(ProcessInfo *process)
 
 void allocateMemToWaitingProcesses()
 {
-    while (!isEmpty(waitingQ))
+    while (!isEmptyPri(waitingQ))
     {
-        ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
-        int size = getNearestPowerOfTwo(process->memsize);
+        dequeuePri(waitingQ, (void **)&allocP, AllocPri);
+
+        int size = getNearestPowerOfTwo(allocP->memsize);
         MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
 
         // if we couldnt find best fit return process to waitingqueue
         if (currentBestFit == NULL)
         {
-            enqueue(tempQ, process);
+            enqueue(tempQ, allocP);
         }
         else
         {
             // get address (start byte) of process memory
-            int address = allocateMemory(currentBestFit, process->memsize);
-            process->address = address;
+            int address = allocateMemory(currentBestFit, allocP->memsize);
+            allocP->address = address;
             // enqueue to priorityQ
             switch (algorithm)
             {
             case HPF:
-                enqueuePri(priReadyQueue, process, -(process->priority));
+                enqueuePri(priReadyQueue, allocP, -(allocP->priority));
                 break;
             case SRTN:
-                enqueuePri(priReadyQueue, process, -(process->remainingTime));
+                enqueuePri(priReadyQueue, allocP, -(allocP->remainingTime));
                 break;
             case RR:
-                enqueuePri(priReadyQueue, process, -(process->priority));
+                enqueuePri(priReadyQueue, allocP, -(allocP->priority));
                 break;
             }
-            processMemoryLog(process, getClk(), 1, size);
+            processMemoryLog(allocP, getClk(), 1, size);
         }
     }
     // return processes from temp to waitingQ
     while (!isEmpty(tempQ))
     {
         ProcessInfo *process = (ProcessInfo *)dequeue(tempQ);
-        enqueue(waitingQ, process);
+         switch (algorithm)
+            {
+            case HPF:
+                enqueuePri(waitingQ, process, -(process->priority));
+                break;
+            case SRTN:
+                enqueuePri(waitingQ, process, -(process->remainingTime));
+                break;
+            case RR:
+                enqueuePri(waitingQ, process, -(process->priority));
+                break;
+            }
     }
 }
