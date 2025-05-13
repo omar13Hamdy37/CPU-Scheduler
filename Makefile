@@ -14,7 +14,7 @@ build:
 	$(CC) $(CFLAGS) $(SRC)/test_generator.c -o $(BIN)/test_generator.out
 
 clean:
-	rm -f $(BIN)/*.out processes.txt scheduler.log scheduler.perf
+	rm -f $(BIN)/*.out processes.txt *.log scheduler.perf 
 
 all: clean build
 

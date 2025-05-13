@@ -53,6 +53,7 @@ void merge(MemoryTreeNode *root)
     root->right = NULL;
     root->free = true;
 }
+
 int getNearestPowerOfTwo(int memsize)
 {
     int i = 1;
