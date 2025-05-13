@@ -23,21 +23,12 @@ void receiveMQ();
 void importToReadyQueue();
 void allocateMemToProcess();
 void allocateMemToWaitingProcesses();
+
 int *pri;
 ProcessInfo *temp;
 ProcessInfo *currentProcess = NULL;
 ProcessInfo *incomingProcess = NULL;
 enum scheduling_type algorithm;
-
-// bool processSignal = false;
-// void handle_process_signal(int sig)
-// {
-//     if (sig == SIGUSR2)
-//     {
-//         processSignal = true;
-
-//     }
-// }
 
 void clearScheduler(int sig);
 // Prepare message buffer
@@ -48,6 +39,9 @@ Queue *readyQueue;
 Queue *waitingQ; // for processes that we couldn't allocate memory for
 Queue *tempQ;
 PriQueue *priReadyQueue;
+PriQueue *memoryAllocQueue;
+
+ProcessInfo *allocP = NULL;
 
 // Memory root
 MemoryTreeNode *memoryTreeRoot;
@@ -140,6 +134,9 @@ void runSRTN_new(int msqid)
     finishQueue = createQueue();
     waitingQ = createQueue();
     tempQ = createQueue();
+    memoryAllocQueue = createPriQueue();
+    allocP = NULL;
+
 
     currentProcess = NULL;
     incomingProcess = NULL;
@@ -279,6 +276,8 @@ void runHPF_new(int msqid)
     finishQueue = createQueue();
     waitingQ = createQueue();
     tempQ = createQueue();
+    memoryAllocQueue = createPriQueue();
+    allocP = NULL;
 
     currentProcess = NULL;
     int *pri = malloc(sizeof(int));
@@ -343,7 +342,8 @@ void runRR_new(int msqid, int quantum)
 {
     int count = 0;
     // initalize clock
-
+    memoryAllocQueue = createPriQueue();
+    allocP = NULL;
     // initalize output files to be able to log
     initSchedulerLog();
     initMemoryLog();
@@ -369,11 +369,14 @@ void runRR_new(int msqid, int quantum)
     pri = malloc(sizeof(int));
     while (count != totalNumProcesses)
     {
+
         // try to allocate memory for all processes in waitingQ
         allocateMemToWaitingProcesses();
+
         // Keep on extracting from msg queue till its empty
         // must do that in case multiple processes have the same arrival time
         receiveMQ();
+
         // dequeue the sorted process to the actual RR ready queue
         importToReadyQueue();
 
@@ -592,6 +595,8 @@ void deallocateProcessMemory(ProcessInfo *process)
 
 void receiveMQ()
 {
+
+    // collect all processes of this second into memoryALLOCQUEUE
     while (ReceiveFromPG(&msgBuffer, msqid) != -1)
     {
 
@@ -611,9 +616,34 @@ void receiveMQ()
         process->semid = semid;
 
         printf("Process %i received at time %i, should be %i\n", process->pid, getClk(), process->arrivalTime);
+        // put into memory alloc queue depending on priority
+        switch (algorithm)
+        {
+        case HPF:
+
+            enqueuePri(memoryAllocQueue, process, -(process->priority));
+
+            break;
+        case SRTN:
+            enqueuePri(memoryAllocQueue, process, -(process->remainingTime));
+            break;
+        case RR:
+            enqueuePri(memoryAllocQueue, process, -(process->priority));
+
+            break;
+        }
 
         // try to allocate memory to process
-        allocateMemToProcess(process);
+    }
+    // now actually alloc the procdequeuePri(priReadyQueue, (void **)&currentProcess, pripriesses
+    int *AllocPri = malloc(sizeof(int));
+
+    while (!isEmptyPri(memoryAllocQueue))
+    {
+
+        dequeuePri(memoryAllocQueue, (void **)&allocP, AllocPri);
+
+        allocateMemToProcess(allocP);
     }
 }
 void importToReadyQueue()
@@ -621,12 +651,13 @@ void importToReadyQueue()
 
     while (dequeuePri(priReadyQueue, (void **)&temp, pri) != 0)
     {
-        printf("hena 2\n");
+
         enqueue(readyQueue, temp);
     }
 }
 
-void allocateMemToProcess(ProcessInfo* process) {
+void allocateMemToProcess(ProcessInfo *process)
+{
     int size = getNearestPowerOfTwo(process->memsize);
     // get best fit for process in the current memory tree
     MemoryTreeNode *currentBestFit = getBestFit(memoryTreeRoot, size);
@@ -643,24 +674,25 @@ void allocateMemToProcess(ProcessInfo* process) {
         // negative remaining time so srt has highest prioity
         switch (algorithm)
         {
-            case HPF:
-                enqueuePri(priReadyQueue, process, -(process->priority));
+        case HPF:
+            enqueuePri(priReadyQueue, process, -(process->priority));
 
-                break;
-            case SRTN:
-                enqueuePri(priReadyQueue, process, -(process->remainingTime));
-                break;
-            case RR:
-                enqueuePri(priReadyQueue, process, -(process->priority));
+            break;
+        case SRTN:
+            enqueuePri(priReadyQueue, process, -(process->remainingTime));
+            break;
+        case RR:
+            enqueuePri(priReadyQueue, process, -(process->priority));
 
-                break;
+            break;
         }
 
         processMemoryLog(process, getClk(), 1, size);
     }
 }
 
-void allocateMemToWaitingProcesses() {
+void allocateMemToWaitingProcesses()
+{
     while (!isEmpty(waitingQ))
     {
         ProcessInfo *process = (ProcessInfo *)dequeue(waitingQ);
@@ -678,16 +710,17 @@ void allocateMemToWaitingProcesses() {
             int address = allocateMemory(currentBestFit, process->memsize);
             process->address = address;
             // enqueue to priorityQ
-            switch (algorithm) {
-                case HPF:
-                    enqueuePri(priReadyQueue, process, -(process->priority));
-                    break;
-                case SRTN:
-                    enqueuePri(priReadyQueue, process, -(process->remainingTime));
-                    break;
-                case RR:
-                    enqueuePri(priReadyQueue, process, -(process->priority));
-                    break;
+            switch (algorithm)
+            {
+            case HPF:
+                enqueuePri(priReadyQueue, process, -(process->priority));
+                break;
+            case SRTN:
+                enqueuePri(priReadyQueue, process, -(process->remainingTime));
+                break;
+            case RR:
+                enqueuePri(priReadyQueue, process, -(process->priority));
+                break;
             }
             processMemoryLog(process, getClk(), 1, size);
         }
