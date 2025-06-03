@@ -1,7 +1,7 @@
 # 🧠 CPU Scheduler Project — Operating Systems
 
 A simulation of three CPU scheduling algorithms:  
-**Highest Priority First (HPF)**, **Shortest Remaining Time Next (SRTN)**, and **Round Robin (RR)** using C.
+**Highest Priority First (HPF)**, **Shortest Remaining Time Next (SRTN)**, and **Round Robin (RR)**  — combined with a **Buddy System Memory Allocation module**. Implemented in C using POSIX message queues for inter-process communication.
 ---
 
 ## 📌 Overview
